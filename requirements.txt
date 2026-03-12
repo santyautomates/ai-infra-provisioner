@@ -1,0 +1,7 @@
+google-adk
+fastapi
+mcp
+uvicorn
+pydantic
+python-dotenv
+streamlit
