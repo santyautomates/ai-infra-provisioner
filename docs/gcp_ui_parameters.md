@@ -1,90 +1,248 @@
-# GCP Service UI Parameters & Governance Reference
+# GCP UI Parameters — Policy-Aligned Reference
 
-This document details the exact input parameters available in the AI Infrastructure Provisioner's **GCP Configuration** panel, alongside the **strict organizational policies** enforced by the Governance Agent.
-
-## 🛡️ Global Governance Policies
-* **Allowed Regions**: `us-central1`, `europe-west1`, `asia-northeast1`
-* **Environments (`[env]`)**: `dev`, `stag`, `prod`
-* **Naming Convention**: `proj-[env]-[service]-[resource_type]`
+> All examples below are compliant with the organizational policies defined in `mcp_server.py`.
+> Any value outside these constraints will be **REJECTED** by the Governance Agent.
 
 ---
 
-## 🖥️ Compute & Hosting
+## 🌍 Global Policy Constraints
 
-### Compute Engine (VM)
-*   **Instance Name**: Must match `proj-[env]-[service]-vm` (e.g., `proj-dev-payment-vm`)
-*   **Instance Size (T-Shirt)**:
-    *   `Small (e2-micro)` -> 2 vCPU, 1GB RAM
-    *   `Medium (e2-small)` -> 2 vCPU, 2GB RAM
-    *   `Large (e2-medium)` -> 2 vCPU, 4GB RAM
-    *   `X-Large (n1-standard-1)` -> 1 vCPU, 3.75GB RAM
-*   **Source Image**: `debian-11` (Default), `ubuntu-2204-lts`, `rhel-9`
-
-### Cloud Run (Serverless Containers)
-*   **Service Name**: Must match `proj-[env]-[service]-cloudrun`
-*   **Memory Size (T-Shirt)**:
-    *   `Small (256Mi)`, `Medium (512Mi)`, `Large (1Gi)`, `X-Large (2Gi)`
-*   **Container Image**: Must be from an approved registry (e.g., `gcr.io/google-samples/hello-app:1.0`)
-
-### Kubernetes Engine (GKE)
-*   **Cluster Name**: Must match `proj-[env]-[service]-cluster`
-*   **Node Size (T-Shirt)**: Matches Compute Engine sizes (e.g., `Large (e2-medium)`)
-*   **Node Count**: 1 to 10 (Default: 3)
+| Policy | Allowed Values |
+|---|---|
+| **Regions** | `us-central1`, `europe-west1`, `asia-northeast1` |
+| **Environments** | `dev`, `stag`, `prod` |
+| **Naming Pattern** | `proj-[env]-[service]-[resource_type]` |
 
 ---
 
-## 🌐 Networking
+## 🖥️ Compute Engine (VM)
 
-### VPC Network
-*   **VPC Name**: Must match `proj-[env]-[service]-vpc`
-*   **Subnet Mode**: `Custom` (Recommended) or `Auto`
+**Naming**: `proj-[env]-[service]-vm`
 
-### Cloud Load Balancing
-*   **LB Name**: Must match `proj-[env]-[service]-lb`
-*   **Type**: `External HTTP(S)`, `Internal HTTP(S)`, `Network TCP/UDP`
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Instance Name | Pattern above | `proj-dev-payment-vm` |
+| Zone | Must be in allowed region | `us-central1-a` |
+| Machine Type | `e2-micro`, `e2-small`, `e2-medium`, `n1-standard-1` | `e2-medium` |
+| Image Family | `debian-11` only | `--image-family=debian-11` |
+| Image Project | `debian-cloud` only | `--image-project=debian-cloud` |
+| Public IP | **Not allowed** (`allow_public_ip: false`) | Must use `--no-address` |
 
----
-
-## 🗄️ Storage & Databases
-
-### Cloud Storage (GCS)
-*   **Bucket Name**: Must match `proj-[env]-[service]-storage`
-*   **Storage Class**: `STANDARD`, `NEARLINE`, `COLDLINE`, `ARCHIVE`
-
-### Cloud SQL (Relational DB)
-*   **Instance ID**: Must match `proj-[env]-[service]-db`
-*   **Database Version**: `POSTGRES_15`, `MYSQL_8_0`, `SQLSERVER_2019_STANDARD`
-*   **Size (T-Shirt)**:
-    *   `Small (db-f1-micro)`, `Medium (db-g1-small)`, `Large (db-custom-1-3840)`
-
-### Spanner (Global Relational DB)
-*   **Instance ID**: Must match `proj-[env]-[service]-spanner`
-*   **Node Count**: 1 to 5 (Default: 1)
+**Valid gcloud command example:**
+```bash
+gcloud compute instances create proj-dev-payment-vm \
+  --zone=us-central1-a \
+  --machine-type=e2-medium \
+  --image-family=debian-11 \
+  --image-project=debian-cloud \
+  --no-address
+```
 
 ---
 
-## 🧠 Data & AI
+## ☁️ Cloud Run
 
-### BigQuery (Data Warehouse)
-*   **Dataset ID**: Must match `proj_[env]_[service]_dataset` (Note: Underscores used for BQ)
-*   **Location**: Matches allowed regions (e.g., `US`, `EU`, or specific regions)
+**Naming**: `proj-[env]-[service]-cloudrun`
 
-### Vertex AI (Machine Learning)
-*   **Endpoint Name**: Must match `proj-[env]-[service]-endpoint`
-*   **Model Type**: `Gemini 1.5 Pro`, `Gemini 1.5 Flash`, `PaLM 2`
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Service Name | Pattern above | `proj-dev-payment-cloudrun` |
+| Region | See allowed regions | `us-central1` |
+| Container Image | From `devops_standards.docker_images` | `gcr.io/google-samples/hello-app:1.0` |
+| Allow Unauthenticated | Based on `allow_unauthenticated_cloudrun: true` | `--allow-unauthenticated` |
+
+**Valid gcloud command example:**
+```bash
+gcloud run deploy proj-dev-payment-cloudrun \
+  --image=gcr.io/google-samples/hello-app:1.0 \
+  --region=us-central1 \
+  --allow-unauthenticated
+```
 
 ---
 
-## 🛠️ DevOps & Security
+## 🗄️ Cloud SQL
 
-### Artifact Registry
-*   **Repository Name**: Must match `proj-[env]-[service]-repo`
-*   **Format**: `DOCKER`, `MAVEN`, `NPM`, `PYTHON`
+**Naming**: `proj-[env]-[service]-db`
 
-### Secret Manager
-*   **Secret ID**: Must match `proj-[env]-[service]-secret`
-*   **Replication**: `Automatic` or `Manual (Regional)`
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Instance ID | Pattern above | `proj-prod-payment-db` |
+| Region | See allowed regions | `europe-west1` |
+| Database Version | `POSTGRES_15`, `MYSQL_8_0`, `SQLSERVER_2019_STANDARD` | `POSTGRES_15` |
+| Tier | `db-f1-micro`, `db-g1-small`, `db-custom-1-3840` | `db-g1-small` |
 
-### IAM (Identity & Access Management)
-*   **Principal**: Email address (e.g., `service-account@project.iam.gserviceaccount.com`)
-*   **Role**: Predefined role (e.g., `roles/storage.admin`, `roles/compute.viewer`)
+**Valid gcloud command example:**
+```bash
+gcloud sql instances create proj-prod-payment-db \
+  --database-version=POSTGRES_15 \
+  --tier=db-g1-small \
+  --region=europe-west1
+```
+
+---
+
+## ☸️ Google Kubernetes Engine (GKE)
+
+**Naming**: `proj-[env]-[service]-cluster`
+
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Cluster Name | Pattern above | `proj-stag-backend-cluster` |
+| Region | See allowed regions | `asia-northeast1` |
+| Machine Type | Same as VM: `allowed_machine_types` | `e2-small` |
+| Node Count | 1–10 | `3` |
+
+**Valid gcloud command example:**
+```bash
+gcloud container clusters create proj-stag-backend-cluster \
+  --region=asia-northeast1 \
+  --machine-type=e2-small \
+  --num-nodes=3
+```
+
+---
+
+## 🪣 Cloud Storage (GCS)
+
+**Naming**: `proj-[env]-[service]-storage`
+
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Bucket Name | Pattern above | `proj-dev-media-storage` |
+| Location | See allowed regions | `us-central1` |
+| Storage Class | `STANDARD`, `NEARLINE`, `COLDLINE`, `ARCHIVE` | `STANDARD` |
+
+**Valid gcloud command example:**
+```bash
+gcloud storage buckets create gs://proj-dev-media-storage \
+  --location=us-central1 \
+  --default-storage-class=STANDARD
+```
+
+---
+
+## 📡 Pub/Sub
+
+**Naming**: `proj-[env]-[service]-topic`
+
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Topic Name | Pattern above | `proj-dev-orders-topic` |
+
+**Valid gcloud command example:**
+```bash
+gcloud pubsub topics create proj-dev-orders-topic
+```
+
+---
+
+## 🔴 Memorystore (Redis)
+
+**Naming**: `proj-[env]-[service]-cache`
+
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Instance Name | Pattern above | `proj-dev-session-cache` |
+| Region | See allowed regions | `us-central1` |
+| Tier | `BASIC`, `STANDARD_HA` | `BASIC` |
+
+**Valid gcloud command example:**
+```bash
+gcloud redis instances create proj-dev-session-cache \
+  --region=us-central1 \
+  --tier=BASIC
+```
+
+---
+
+## 🌐 VPC Network
+
+**Naming**: `proj-[env]-[service]-vpc`
+
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| VPC Name | Pattern above | `proj-dev-core-vpc` |
+| Subnet Mode | `custom` (recommended) or `auto` | `custom` |
+
+**Valid gcloud command example:**
+```bash
+gcloud compute networks create proj-dev-core-vpc \
+  --subnet-mode=custom
+```
+
+---
+
+## 🐳 Dockerfiles (DevOps Artifacts)
+
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Base Image | `alpine`, `debian-slim`, `node:18-alpine`, `python:3.11-slim`, `gcr.io/google-samples/hello-app:1.0` | `python:3.11-slim` |
+
+**Valid Dockerfile example:**
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY . .
+RUN pip install -r requirements.txt
+CMD ["python", "app.py"]
+```
+
+---
+
+## ⚓ Kubernetes Manifests (GKE Only)
+
+Kubernetes YAML must include the following required fields per `devops_standards.kubernetes_requirements`:
+- `resources.limits`
+- `resources.requests`
+- `livenessProbe`
+
+**Valid Kubernetes Deployment example:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proj-stag-payment-deployment
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+      - name: payment-app
+        image: gcr.io/google-samples/hello-app:1.0
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+```
+
+---
+
+## ⚙️ CI/CD Pipelines
+
+Pipelines must target only:
+- `github_actions`
+- `gitlab_ci`
+
+Any other platform (Jenkins, CircleCI, etc.) will not be validated by the governance agent for automated provisioning.
+
+---
+
+## ❌ Common Rejection Reasons
+
+| Mistake | Example | Fix |
+|---|---|---|
+| Wrong region | `asia-south1` | Use `us-central1`, `europe-west1`, or `asia-northeast1` |
+| Wrong machine type | `e2-highmem-16` | Use `e2-micro`, `e2-small`, `e2-medium`, or `n1-standard-1` |
+| Wrong SQL tier | `db-n1-standard-2` | Use `db-f1-micro`, `db-g1-small`, or `db-custom-1-3840` |
+| Missing `--no-address` on VM | `gcloud compute instances create ...` | Always add `--no-address` |
+| Bad naming | `payment-vm-dev` | Must be `proj-dev-payment-vm` |
+| Unapproved Docker base | `FROM ubuntu:22.04` | Use `FROM debian-slim` or other approved images |

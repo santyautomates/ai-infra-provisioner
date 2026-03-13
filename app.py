@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import json
+import uuid
 import streamlit as st
 import requests
 import subprocess
@@ -53,7 +54,7 @@ st.set_page_config(page_title="AI Infra Provisioner", page_icon="☁️", layout
 st.markdown("""
 <div style="text-align: center; margin-bottom: 2rem;">
     <h1 style="font-family: 'Inter', sans-serif; font-weight: 800; font-size: 3.5rem; letter-spacing: -0.05em; margin-bottom: 0.5rem; background: -webkit-linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">AutoInfra</h1>
-    <p style="font-family: 'Inter', sans-serif; color: #64748b; font-size: 1.1rem; max-width: 600px; margin: 1rem auto;">🪄 Transform natural language into secure, compliant, and production-ready GCP infrastructure instantly.</p>
+    <p style="font-family: 'Inter', sans-serif; color: #64748b; font-size: 1.1rem; max-width: 600px; margin: 1rem auto;">🪄 Transform natural language into secure, compliant, and production-ready CLOUD infrastructure instantly.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -117,39 +118,53 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- Initialize session state ---
+if "request_history" not in st.session_state:
+    st.session_state.request_history = []
+if "session_uid" not in st.session_state:
+    st.session_state.session_uid = str(uuid.uuid4())[:8]
+
 # --- Sidebar Configuration ---
 with st.sidebar:
-    st.image("https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png", width=50)
-    st.title("GitHub Integration")
-    
-    default_pat = os.getenv("GITHUB_PAT", "")
-    github_pat = st.text_input("Personal Access Token (PAT)", value=default_pat, type="password", help="Required to trigger GitHub Actions workflows.")
-    github_repo = st.text_input("Repository (owner/repo)", value="santyautomates/ai-infra-provisioner", help="Target repository for the workflow.")
-    github_workflow = st.text_input("Workflow Filename", value="provision.yml", help="Filename of the workflow in .github/workflows/")
-    
-    st.markdown("---")
-    st.title("🧺 Housekeeping")
-    st.write("Clean up cache files, logs, and temp artifacts.")
-    if st.button("🧹 Run Housekeeping", use_container_width=True):
-        try:
-            # Run the housekeeping script
-            script_path = os.path.join(os.getcwd(), "scripts", "optimize_codebase.sh")
-            result = subprocess.run(["bash", script_path], capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                st.success("✨ Codebase optimized successfully!")
-                st.toast("Housekeeping complete!", icon="✅")
-                with st.expander("Show Details"):
-                    st.code(result.stdout)
-            else:
-                st.error("❌ Housekeeping failed.")
-                with st.expander("Show Errors"):
-                    st.code(result.stderr)
-        except Exception as e:
-            st.error(f"Error running housekeeping: {str(e)}")
+    # GitHub Integration (collapsible)
+    with st.expander("🐙 GitHub Integration", expanded=False):
+        st.image("https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png", width=40)
+        default_pat = os.getenv("GITHUB_PAT", "")
+        github_pat = st.text_input("Personal Access Token (PAT)", value=default_pat, type="password", help="Required to trigger GitHub Actions workflows. Needs 'workflow' scope.")
+        github_repo = st.text_input("Repository (owner/repo)", value="santyautomates/ai-infra-provisioner", help="Target GitHub repository for the workflow dispatch.")
+        github_workflow = st.text_input("Workflow Filename", value="provision.yml", help="Filename inside .github/workflows/ to trigger.")
+        st.info("💡 Set `GITHUB_PAT` in your `.env` to auto-fill.")
 
-    st.markdown("---")
-    st.info("💡 Tip: Set `GITHUB_PAT` in your `.env` file to auto-fill this field.")
+    # Housekeeping (collapsible)
+    with st.expander("🧺 Housekeeping", expanded=False):
+        st.write("Clean up cache files, logs, and temp artifacts.")
+        if st.button("🧹 Run Housekeeping", use_container_width=True):
+            try:
+                script_path = os.path.join(os.getcwd(), "scripts", "optimize_codebase.sh")
+                result = subprocess.run(["bash", script_path], capture_output=True, text=True)
+                if result.returncode == 0:
+                    st.success("✨ Codebase optimized successfully!")
+                    st.toast("Housekeeping complete!", icon="✅")
+                    with st.expander("Show Details"):
+                        st.code(result.stdout)
+                else:
+                    st.error("❌ Housekeeping failed.")
+                    with st.expander("Show Errors"):
+                        st.code(result.stderr)
+            except Exception as e:
+                st.error(f"Error running housekeeping: {str(e)}")
+
+    # Request History Panel
+    with st.expander("📋 Request History", expanded=False):
+        if not st.session_state.request_history:
+            st.info("No requests yet this session.")
+        else:
+            for i, entry in enumerate(reversed(st.session_state.request_history[-5:])):
+                status_icon = "✅" if entry["status"] == "success" else "❌"
+                st.markdown(f"**{status_icon} {entry['feature']}** `{entry['time']}`")
+                st.caption(entry['summary'])
+                if i < len(st.session_state.request_history) - 1:
+                    st.divider()
 
 st.markdown("### 🛠️ Configuration Panel")
 with st.container():
@@ -909,11 +924,34 @@ with st.container():
             settings = st.text_area("VS Code Settings", "{\n    \"C_Cpp.updateChannel\": \"Insiders\",\n    \"C_Cpp.intelliSenseEngine\": \"Default\"\n}")
             additional_input = f"Language: C++\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
 
+    # --- Dry Run Toggle ---
+    dry_run = st.toggle("🧪 Dry Run (Preview commands only — no deployment)", value=False,
+                        help="When enabled, the pipeline will plan and validate but NOT execute any real cloud commands.")
+
+    # --- Pre-flight Checklist ---
+    if feature != "Select a Feature" and additional_input:
+        with st.expander("🛫 Pre-flight Checklist", expanded=True):
+            st.markdown("**Review before submitting:**")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown("✅ Feature selected: `{}`".format(feature))
+                if service and service != "Select Service":
+                    st.markdown("✅ Service: `{}`".format(service))
+                if "us-central1" in additional_input or "europe-west1" in additional_input or "asia-northeast1" in additional_input:
+                    st.markdown("✅ Region: policy-compliant")
+                elif "Region" in additional_input:
+                    st.markdown("⚠️  Verify region is in: `us-central1`, `europe-west1`, `asia-northeast1`")
+            with col_b:
+                if feature == "GCP Configuration":
+                    st.markdown("⚠️  VM will get `--no-address` (no public IP)")
+                    st.markdown("ℹ️  Image: `debian-11 / debian-cloud`")
+                st.markdown("ℹ️  Session ID: `{}`".format(st.session_state.session_uid))
+
     col1, col2 = st.columns(2)
     with col1:
-        start_button = st.button("Start Local", type="primary", use_container_width=True)
+        start_button = st.button("▶️ Start Local", type="primary", use_container_width=True)
     with col2:
-        github_button = st.button("Deploy via GitHub", type="secondary", use_container_width=True)
+        github_button = st.button("🚀 Deploy via GitHub", type="secondary", use_container_width=True)
 
 user_request = ""
 if (start_button or github_button) and feature != "Select a Feature":
@@ -972,6 +1010,21 @@ if (start_button or github_button) and feature != "Select a Feature":
             st.error(message)
         st.stop()
 
+    # --- Save to history ---
+    import datetime
+    st.session_state.request_history.append({
+        "feature": feature,
+        "summary": user_request[:80] + "..." if len(user_request) > 80 else user_request,
+        "time": datetime.datetime.now().strftime("%H:%M:%S"),
+        "status": "pending"
+    })
+
+    if dry_run:
+        st.info("🧪 **Dry Run Mode** — Pipeline stopped after planning. No resources will be created.")
+        with st.expander("📋 Request that would be sent:"):
+            st.code(user_request, language="text")
+        st.stop()
+
     # --- Local Execution ---
     st.toast("🚀 Request captured! Starting Local AI Pipeline...", icon="⏳")
 
@@ -1005,7 +1058,23 @@ if (start_button or github_button) and feature != "Select a Feature":
     governance = get_governance_agent(mcp_toolset)
     executor = get_executor_agent(mcp_toolset)
 
+    # --- Session UUID for isolation ---
+    session_uid = st.session_state.session_uid
+
     async def run_flow():
+        # --- Progress Indicator ---
+        progress_cols = st.columns(3)
+        with progress_cols[0]:
+            step1_status = st.empty()
+            step1_status.markdown("⏳ **1. Planning**")
+        with progress_cols[1]:
+            step2_status = st.empty()
+            step2_status.markdown("⬜ 2. Governance")
+        with progress_cols[2]:
+            step3_status = st.empty()
+            step3_status.markdown("⬜ 3. Execution")
+        st.markdown("---")
+
         # --- Step 1: Planning ---
         st.markdown("### 1. Infrastructure Planning")
         plan_placeholder = st.empty()
@@ -1017,7 +1086,7 @@ if (start_button or github_button) and feature != "Select a Feature":
             plan_text = ""
             try:
                 async for event in runner1.run_async(
-                    user_id="user", session_id="s1", 
+                    user_id="user", session_id=f"plan-{session_uid}", 
                     new_message=types.Content(parts=[types.Part.from_text(text=f"User Request: {user_request}")])
                 ):
                     if event.content and event.content.parts:
@@ -1029,6 +1098,9 @@ if (start_button or github_button) and feature != "Select a Feature":
                 st.error(f"Planning failed: {str(e)}")
                 return
         
+        step1_status.markdown("✅ **1. Planning**")
+        step2_status.markdown("⏳ **2. Governance**")
+
         if not plan_text.strip():
             st.error("The Planner failed to return a valid plan.")
             return
@@ -1044,7 +1116,7 @@ if (start_button or github_button) and feature != "Select a Feature":
             validation_text = ""
             try:
                 async for event in runner2.run_async(
-                    user_id="user", session_id="s2", 
+                    user_id="user", session_id=f"gov-{session_uid}", 
                     new_message=types.Content(parts=[types.Part.from_text(text=f"Please review this proposed plan:\n{plan_text}")])
                 ):
                     if event.content and event.content.parts:
@@ -1058,12 +1130,18 @@ if (start_button or github_button) and feature != "Select a Feature":
 
         if "REJECTED" in validation_text:
             st.error("🚨 Governance rejected the plan. Execution aborted.")
+            step2_status.markdown("❌ **2. Governance**")
+            st.session_state.request_history[-1]["status"] = "failed"
             return
 
         if "APPROVED" not in validation_text:
             st.error("🚨 Governance response ambiguous. Execution aborted.")
+            step2_status.markdown("❌ **2. Governance**")
+            st.session_state.request_history[-1]["status"] = "failed"
             return
-            
+
+        step2_status.markdown("✅ **2. Governance**")
+        step3_status.markdown("⏳ **3. Execution**")
         st.success("✅ Governance Checks Passed!")
 
         # --- Step 3: Execution ---
@@ -1077,19 +1155,22 @@ if (start_button or github_button) and feature != "Select a Feature":
             exec_text = ""
             try:
                 async for event in runner3.run_async(
-                    user_id="user", session_id="s3", 
+                    user_id="user", session_id=f"exec-{session_uid}", 
                     new_message=types.Content(parts=[types.Part.from_text(text=f"Execute the following APPROVED plan:\n{validation_text}")])
                 ):
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if part.text:
                                 exec_text += part.text
-                                exec_placeholder.markdown(f"```text\n{exec_text}\n```")
+                                exec_placeholder.code(exec_text, language="bash")
             except Exception as e:
                 st.error(f"Execution failed: {str(e)}")
                 return
                 
+        step3_status.markdown("✅ **3. Execution**")
+        st.session_state.request_history[-1]["status"] = "success"
         st.success("🎉 Infrastructure Provisioning Complete!")
+        st.balloons()
 
     # Start the async loop
     asyncio.run(run_flow())
