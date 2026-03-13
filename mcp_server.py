@@ -26,10 +26,25 @@ POLICIES = {
         "gke": "proj-[env]-[service]-cluster",
         "sql": "proj-[env]-[service]-db",
         "bucket": "proj-[env]-[service]-storage",
-        "pubsub": "proj-[env]-[service]-topic",
+        "pubsub_topic": "proj-[env]-[service]-topic",
+        "pubsub_subscription": "proj-[env]-[service]-sub",
         "redis": "proj-[env]-[service]-cache",
         "cloudrun": "proj-[env]-[service]-cloudrun",
         "vpc": "proj-[env]-[service]-vpc",
+        "subnet": "proj-[env]-[service]-subnet",
+        "artifact_registry": "proj-[env]-[service]-repo",
+        "cloud_function": "proj-[env]-[service]-fn",
+        "secret": "proj-[env]-[service]-secret",
+        "iam_sa": "proj-[env]-[service]-sa",
+        "vertex_endpoint": "proj-[env]-[service]-endpoint",
+        "bigquery_dataset": "proj_[env]_[service]_dataset",
+        "bigquery_table": "proj_[env]_[service]_table",
+        "bigtable": "proj-[env]-[service]-bt",
+        "spanner": "proj-[env]-[service]-spanner",
+        "firestore": "proj-[env]-[service]-firestore",
+        "cloud_build_trigger": "proj-[env]-[service]-trigger",
+        "load_balancer": "proj-[env]-[service]-lb",
+        "app_engine": "proj-[env]-[service]-app",
         "default_fallback": "proj-[env]-[service]-[short_resource_name]"
     },
     "security_policies": {
@@ -40,9 +55,26 @@ POLICIES = {
     },
     "environments": ["dev", "stag", "prod"],
     "devops_standards": {
-        "docker_images": ["alpine", "debian-slim", "node:18-alpine", "python:3.11-slim", "gcr.io/google-samples/hello-app:1.0"],
+        "docker_images": [
+            "alpine",
+            "debian-slim",
+            "node:18-alpine",
+            "python:3.11-slim",
+            "python:3.10-slim",
+            "gcr.io/google-samples/hello-app:1.0"
+        ],
         "kubernetes_requirements": ["resources.limits", "resources.requests", "livenessProbe"],
-        "ci_cd_allowed_platforms": ["github_actions", "gitlab_ci"]
+        "ci_cd_allowed_platforms": [
+            "github_actions",
+            "gitlab_ci",
+            "google_cloud_build",
+            "jenkins",
+            "circleci",
+            "azure_pipelines",
+            "aws_codepipeline",
+            "travis_ci",
+            "bitbucket_pipelines"
+        ]
     }
 }
 
