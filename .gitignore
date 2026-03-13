@@ -1,6 +1,25 @@
+# Environment
 .env
+venv/
 .venv/
+env/
+dist/
+build/
+*.egg-info/
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS specific
 .DS_Store
+Thumbs.db
+
+# Project specific
 generated_artifacts/
+*.log

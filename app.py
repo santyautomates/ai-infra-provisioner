@@ -3,6 +3,8 @@ import os
 import sys
 import json
 import streamlit as st
+import requests
+import subprocess
 from dotenv import load_dotenv
 
 from google.adk import Runner
@@ -18,6 +20,32 @@ from agents.executor.agent import get_executor_agent
 
 # Load environment variables
 load_dotenv()
+
+# --- GitHub Workflow Integration ---
+def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text):
+    """Triggers the GitHub Actions provisioning workflow."""
+    url = f"https://api.github.com/repos/{owner_repo}/actions/workflows/{workflow_id}/dispatches"
+    
+    headers = {
+        "Authorization": f"token {github_pat}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    data = {
+        "ref": "main",
+        "inputs": {
+            "request": request_text
+        }
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code == 204:
+            return True, "🚀 GitHub Workflow triggered successfully! You can monitor it in the Actions tab."
+        else:
+            return False, f"Failed to trigger workflow: {response.status_code} - {response.text}"
+    except Exception as e:
+        return False, f"An error occurred while triggering the workflow: {str(e)}"
 
 # Streamlit page config
 st.set_page_config(page_title="AI Infra Provisioner", page_icon="☁️", layout="wide")
@@ -88,6 +116,40 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# --- Sidebar Configuration ---
+with st.sidebar:
+    st.image("https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png", width=50)
+    st.title("GitHub Integration")
+    
+    default_pat = os.getenv("GITHUB_PAT", "")
+    github_pat = st.text_input("Personal Access Token (PAT)", value=default_pat, type="password", help="Required to trigger GitHub Actions workflows.")
+    github_repo = st.text_input("Repository (owner/repo)", value="santyautomates/ai-infra-provisioner", help="Target repository for the workflow.")
+    github_workflow = st.text_input("Workflow Filename", value="provision.yml", help="Filename of the workflow in .github/workflows/")
+    
+    st.markdown("---")
+    st.title("🧺 Housekeeping")
+    st.write("Clean up cache files, logs, and temp artifacts.")
+    if st.button("🧹 Run Housekeeping", use_container_width=True):
+        try:
+            # Run the housekeeping script
+            script_path = os.path.join(os.getcwd(), "scripts", "optimize_codebase.sh")
+            result = subprocess.run(["bash", script_path], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                st.success("✨ Codebase optimized successfully!")
+                st.toast("Housekeeping complete!", icon="✅")
+                with st.expander("Show Details"):
+                    st.code(result.stdout)
+            else:
+                st.error("❌ Housekeeping failed.")
+                with st.expander("Show Errors"):
+                    st.code(result.stderr)
+        except Exception as e:
+            st.error(f"Error running housekeeping: {str(e)}")
+
+    st.markdown("---")
+    st.info("💡 Tip: Set `GITHUB_PAT` in your `.env` file to auto-fill this field.")
 
 st.markdown("### 🛠️ Configuration Panel")
 with st.container():
@@ -847,12 +909,14 @@ with st.container():
             settings = st.text_area("VS Code Settings", "{\n    \"C_Cpp.updateChannel\": \"Insiders\",\n    \"C_Cpp.intelliSenseEngine\": \"Default\"\n}")
             additional_input = f"Language: C++\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
 
-    start_button = st.button("Start", type="primary")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_button = st.button("Start Local", type="primary", use_container_width=True)
+    with col2:
+        github_button = st.button("Deploy via GitHub", type="secondary", use_container_width=True)
 
 user_request = ""
-if start_button and feature != "Select a Feature":
-    internal_guidance = ""
-
+if (start_button or github_button) and feature != "Select a Feature":
     if feature == "Agentic Development":
         internal_guidance = "Guide the development over several steps, including planning, design, implementation, and testing. Ensure to create complete and well-documented applications."
         user_request = f"Agentic Development:\n{additional_input}\n{internal_guidance}"
@@ -871,116 +935,12 @@ if start_button and feature != "Select a Feature":
     elif feature == "Azure Configuration":
         internal_guidance = "Include detailed resource definitions, dependencies, and parameterized templates for flexibility."
         user_request = f"Create an Azure Resource Manager template for {service} with details: {additional_input}. {internal_guidance}"
-
-    elif feature == "Azure Configuration":
-        service = st.selectbox(
-            "Select Azure Service",
-            [
-                "Select Service",  # Default option
-                "Hosting",
-                "Networking",
-                "IAM",
-                "Database",
-                "Storage",
-                "DevOps",
-                "AI & Machine Learning",
-                "Monitoring",
-                "Security"
-            ]
-        )
-        if service == "Hosting":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure Hosting Configuration</h3></div>""", unsafe_allow_html=True)
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            app_service_name = st.text_input("App Service Name", "my-app-service")
-            region = st.selectbox("Region", ["us-central1", "europe-west1", "asia-northeast1"])
-            sku = st.selectbox("Pricing Tier (SKU)", ["F1", "B1", "B2", "B3", "S1", "S2", "S3", "P1v2", "P2v2", "P3v2"])
-            os_type = st.selectbox("Operating System", ["Windows", "Linux"])
-            runtime_stack = st.selectbox("Runtime Stack", [".NET", "Node", "Python", "Java", "PHP", "Ruby"])
-            additional_input = f"Resource Group: {resource_group}\nApp Service Name: {app_service_name}\nRegion: {region}\nPricing Tier: {sku}\nOperating System: {os_type}\nRuntime Stack: {runtime_stack}"
-        elif service == "Networking":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure Networking Configuration</h3></div>""", unsafe_allow_html=True)
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            vnet_name = st.text_input("VNet Name", "my-vnet")
-            address_space = st.text_input("Address Space", "10.0.0.0/16")
-            subnet_name = st.text_input("Subnet Name", "my-subnet")
-            subnet_address = st.text_input("Subnet Address", "10.0.1.0/24")
-            nsg_name = st.text_input("Network Security Group (NSG) Name", "my-nsg")
-            additional_input = f"Resource Group: {resource_group}\nVNet Name: {vnet_name}\nAddress Space: {address_space}\nSubnet Name: {subnet_name}\nSubnet Address: {subnet_address}\nNSG Name: {nsg_name}"
-        elif service == "IAM":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure IAM Configuration</h3></div>""", unsafe_allow_html=True)
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            role_assignment_name = st.text_input("Role Assignment Name", "my-role-assignment")
-            role_definition = st.selectbox("Role Definition", ["Owner", "Contributor", "Reader", "User Access Administrator"])
-            principal_id = st.text_input("Principal ID (User/Service Principal ID)", "user-or-sp-id")
-            scope = st.text_input("Scope", "/subscriptions/{subscription-id}/resourceGroups/{resource-group}")
-            additional_input = f"Resource Group: {resource_group}\nRole Assignment Name: {role_assignment_name}\nRole Definition: {role_definition}\nPrincipal ID: {principal_id}\nScope: {scope}"
-        elif service == "Database":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure Database Configuration</h3></div>""", unsafe_allow_html=True)
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            db_type = st.selectbox("Database Type", ["SQL Database", "Cosmos DB", "MySQL", "PostgreSQL", "MariaDB"])
-            if db_type == "SQL Database":
-                db_name = st.text_input("Database Name", "my-sql-db")
-                server_name = st.text_input("Server Name", "my-sql-server")
-                collation = st.text_input("Collation", "SQL_Latin1_General_CP1_CI_AS")
-                additional_input = f"Resource Group: {resource_group}\nDatabase Type: SQL Database\nDatabase Name: {db_name}\nServer Name: {server_name}\nCollation: {collation}"
-            elif db_type == "Cosmos DB":
-                account_name = st.text_input("Account Name", "my-cosmos-account")
-                consistency_level = st.selectbox("Consistency Level", ["Strong", "Bounded Staleness", "Session", "Consistent Prefix", "Eventual"])
-                additional_input = f"Resource Group: {resource_group}\nDatabase Type: Cosmos DB\nAccount Name: {account_name}\nConsistency Level: {consistency_level}"
-            elif db_type == "MySQL":
-                server_name = st.text_input("Server Name", "my-mysql-server")
-                version = st.selectbox("Version", ["5.6", "5.7", "8.0"])
-                additional_input = f"Resource Group: {resource_group}\nDatabase Type: MySQL\nServer Name: {server_name}\nVersion: {version}"
-            elif db_type == "PostgreSQL":
-                server_name = st.text_input("Server Name", "my-postgresql-server")
-                version = st.selectbox("Version", ["9.6", "10", "11", "12", "13"])
-                additional_input = f"Resource Group: {resource_group}\nDatabase Type: PostgreSQL\nServer Name: {server_name}\nVersion: {version}"
-            elif db_type == "MariaDB":
-                server_name = st.text_input("Server Name", "my-mariadb-server")
-                version = st.selectbox("Version", ["10.2", "10.3", "10.4", "10.5"])
-                additional_input = f"Resource Group: {resource_group}\nDatabase Type: MariaDB\nServer Name: {server_name}\nVersion: {version}"
-        elif service == "Storage":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure Storage Configuration</h3></div>""", unsafe_allow_html=True)
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            storage_account_name = st.text_input("Storage Account Name", "mystorageaccount")
-            sku = st.selectbox("SKU", ["Standard_LRS", "Standard_GRS", "Standard_RAGRS", "Premium_LRS"])
-            access_tier = st.selectbox("Access Tier", ["Hot", "Cool"])
-            additional_input = f"Resource Group: {resource_group}\nStorage Account Name: {storage_account_name}\nSKU: {sku}\nAccess Tier: {access_tier}"
-        elif service == "DevOps":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure DevOps Configuration</h3></div>""", unsafe_allow_html=True)
-            project_name = st.text_input("Project Name", "my-devops-project")
-            repo_name = st.text_input("Repository Name", "my-repo")
-            pipeline_name = st.text_input("Pipeline Name", "my-pipeline")
-            additional_input = f"Project Name: {project_name}\nRepository Name: {repo_name}\nPipeline Name: {pipeline_name}"
-        elif service == "AI & Machine Learning":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure AI & Machine Learning Configuration</h3></div>""", unsafe_allow_html=True)
-            workspace_name = st.text_input("Workspace Name", "my-ml-workspace")
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            region = st.selectbox("Region", ["us-central1", "europe-west1", "asia-northeast1"])
-            additional_input = f"Workspace Name: {workspace_name}\nResource Group: {resource_group}\nRegion: {region}"
-        elif service == "Monitoring":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure Monitoring Configuration</h3></div>""", unsafe_allow_html=True)
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            log_analytics_workspace = st.text_input("Log Analytics Workspace", "my-log-analytics")
-            alert_rules = st.text_area("Alert Rules (comma separated)", "High CPU,Low Memory")
-            additional_input = f"Resource Group: {resource_group}\nLog Analytics Workspace: {log_analytics_workspace}\nAlert Rules: {alert_rules}"
-        elif service == "Security":
-            st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxLjA2ZW0iIGhlaWdodD0iMWVtIiB2aWV3Qm94PSIwIDAgMjU2IDI0MiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd2eUhya08wSiIgeDE9IjU4Ljk3MiUiIHgyPSIzNy4xOTElIiB5MT0iNy40MTElIiB5Mj0iMTAzLjc2MiUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxMTRBOEIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwNjY5QkMiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHaWZJT0RjVlIiIHgxPSI1OS43MTklIiB4Mj0iNTIuNjkxJSIgeTE9IjUyLjMxMyUiIHkyPSI1NC44NjQlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLW9wYWNpdHk9Ii4zIi8+PHN0b3Agb2Zmc2V0PSI3LjElIiBzdG9wLW9wYWNpdHk9Ii4yIi8+PHN0b3Agb2Zmc2V0PSIzMi4xJSIgc3RvcC1vcGFjaXR5PSIuMSIvPjxzdG9wIG9mZnNldD0iNjIuMyUiIHN0b3Atb3BhY2l0eT0iLjA1Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHa1Q1RjdiMmwiIHgxPSIzNy4yNzklIiB4Mj0iNjIuNDczJSIgeTE9IjQuNiUiIHkyPSI5OS45NzklIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjM0NDQkY0Ii8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMjg5MkRGIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZmlsbD0idXJsKCNTVkd2eUhya08wSikiIGQ9Ik04NS4zNDMuMDAzaDc1Ljc1M0w4Mi40NTcgMjMzYTEyLjA4IDEyLjA4IDAgMCAxLTExLjQ0MiA4LjIxNkgxMi4wNkExMi4wNiAxMi4wNiAwIDAgMSAuNjMzIDIyNS4zMDNMNzMuODk4IDguMjE5QTEyLjA4IDEyLjA4IDAgMCAxIDg1LjM0MyAweiIvPjxwYXRoIGZpbGw9IiMwMDc4RDQiIGQ9Ik0xOTUuNDIzIDE1Ni4yODJINzUuMjk3YTUuNTYgNS41NiAwIDAgMC0zLjc5NiA5LjYyN2w3Ny4xOSA3Mi4wNDdhMTIuMTQgMTIuMTQgMCAwIDAgOC4yOCAzLjI2aDY4LjAyeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHaWZJT0RjVlIpIiBkPSJNODUuMzQzLjAwM2ExMS45OCAxMS45OCAwIDAgMC0xMS40NzEgOC4zNzZMLjcyMyAyMjUuMTA1YTEyLjA0NSAxMi4wNDUgMCAwIDAgMTEuMzcgMTYuMTEyaDYwLjQ3NWExMi45MyAxMi45MyAwIDAgMCA5LjkyMS04LjQzN2wxNC41ODgtNDIuOTkxbDUyLjEwNSA0OC42YTEyLjMzIDEyLjMzIDAgMCAwIDcuNzU3IDIuODI4aDY3Ljc2NmwtMjkuNzIxLTg0LjkzNWwtODYuNjQzLjAyTDE2MS4zNy4wMDN6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdrVDVGN2IybCkiIGQ9Ik0xODIuMDk4IDguMjA3QTEyLjA2IDEyLjA2IDAgMCAwIDE3MC42Ny4wMDNIODYuMjQ1YzUuMTc1IDAgOS43NzMgMy4zMDEgMTEuNDI4IDguMjA0TDE3MC45NCAyMjUuM2ExMi4wNjIgMTIuMDYyIDAgMCAxLTExLjQyOCAxNS45Mmg4NC40MjlhMTIuMDYyIDEyLjA2MiAwIDAgMCAxMS40MjUtMTUuOTJ6Ii8+PC9zdmc+\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Azure Security Configuration</h3></div>""", unsafe_allow_html=True)
-            resource_group = st.text_input("Resource Group", "my-resource-group")
-            security_center_policy = st.text_area("Security Center Policy", "Enable all security recommendations")
-            additional_input = f"Resource Group: {resource_group}\nSecurity Center Policy: {security_center_policy}"
-
-        if st.button("Start") and service != "Select Service":
-            self.start_feature(feature, additional_input)
-
-
     elif feature == "AWS Configuration":
         internal_guidance = "Ensure the template includes IAM roles and policies, and follows AWS best practices for security and scalability."
         user_request = f"Create a CloudFormation template for {service} with details: {additional_input}. {internal_guidance}"
     elif feature == "GCP Configuration":
         internal_guidance = "Draft standard gcloud CLI commands to create these resources. Do not use Deployment Manager or Terraform. Ensure all commands are valid and follow GCP best practices. Use the correct flags based on the details."
         user_request = f"Create the following GCP {service} via gcloud commands with details: {additional_input}. {internal_guidance}"
-
     elif feature == "Firebase Configuration":
         internal_guidance = "Ensure the configuration includes authentication, database rules, and hosting settings."
         user_request = f"Create a Firebase configuration with details: {additional_input}. {internal_guidance}"
@@ -994,12 +954,26 @@ if start_button and feature != "Select a Feature":
         internal_guidance = "Include common development tools and configurations, ensuring they follow best practices for development environments."
         user_request = f"Create a .nix configuration with details: {additional_input}. {internal_guidance}"
 
-if start_button and feature != "Select a Feature":
-    st.toast("🚀 Request captured! Starting AI Pipeline...", icon="⏳")
-    
     if not user_request:
-        st.warning("Please enter a request.")
+        st.warning("Please define your requirements first.")
         st.stop()
+
+    if github_button:
+        if not github_pat:
+            st.error("Please provide a GitHub Personal Access Token in the sidebar.")
+            st.stop()
+        
+        st.toast("📤 Dispatching GitHub Workflow...", icon="⚙️")
+        success, message = trigger_github_workflow(github_pat, github_repo, github_workflow, user_request)
+        if success:
+            st.success(message)
+            st.balloons()
+        else:
+            st.error(message)
+        st.stop()
+
+    # --- Local Execution ---
+    st.toast("🚀 Request captured! Starting Local AI Pipeline...", icon="⏳")
 
     if "GOOGLE_CLOUD_PROJECT" not in os.environ:
         st.error("Missing GOOGLE_CLOUD_PROJECT in .env file.")
@@ -1013,7 +987,7 @@ if start_button and feature != "Select a Feature":
             requested_project = match.group(1).strip()
             actual_project = os.environ["GOOGLE_CLOUD_PROJECT"]
             if requested_project != actual_project:
-                st.error(f"🛑 Security Alert: The Project ID '{requested_project}' requested in the UI does not match the authorized backend environment Project ID '{actual_project}'.\\n\\nPlease update the UI field to match the backend project to prevent deploying to unintended environments.")
+                st.error(f"🛑 Security Alert: The Project ID '{requested_project}' requested in the UI does not match the authorized backend environment Project ID '{actual_project}'.\n\nPlease update the UI field to match the backend project to prevent deploying to unintended environments.")
                 st.stop()
 
     # --- Setup ADK / MCP ---
@@ -1071,7 +1045,7 @@ if start_button and feature != "Select a Feature":
             try:
                 async for event in runner2.run_async(
                     user_id="user", session_id="s2", 
-                    new_message=types.Content(parts=[types.Part.from_text(text=f"Please review this proposed plan:\\n{plan_text}")])
+                    new_message=types.Content(parts=[types.Part.from_text(text=f"Please review this proposed plan:\n{plan_text}")])
                 ):
                     if event.content and event.content.parts:
                         for part in event.content.parts:
@@ -1104,13 +1078,13 @@ if start_button and feature != "Select a Feature":
             try:
                 async for event in runner3.run_async(
                     user_id="user", session_id="s3", 
-                    new_message=types.Content(parts=[types.Part.from_text(text=f"Execute the following APPROVED plan:\\n{validation_text}")])
+                    new_message=types.Content(parts=[types.Part.from_text(text=f"Execute the following APPROVED plan:\n{validation_text}")])
                 ):
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if part.text:
                                 exec_text += part.text
-                                exec_placeholder.markdown(f"```text\\n{exec_text}\\n```")
+                                exec_placeholder.markdown(f"```text\n{exec_text}\n```")
             except Exception as e:
                 st.error(f"Execution failed: {str(e)}")
                 return

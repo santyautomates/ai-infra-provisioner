@@ -40,3 +40,9 @@ jobs:
           # The auth step above handles the authentication for gcloud.
         run: |
           python main.py --request "${{ github.event.inputs.request }}"
+
+      - name: Upload Generated Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-artifacts
+          path: generated_artifacts/
