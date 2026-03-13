@@ -45,6 +45,8 @@ POLICIES = {
         "cloud_build_trigger": "proj-[env]-[service]-trigger",
         "load_balancer": "proj-[env]-[service]-lb",
         "app_engine": "proj-[env]-[service]-app",
+        "memorystore": "proj-[env]-[service]-cache",
+        "monitoring_alert": "proj-[env]-[service]-alert",
         "default_fallback": "proj-[env]-[service]-[short_resource_name]"
     },
     "security_policies": {
@@ -57,11 +59,17 @@ POLICIES = {
     "devops_standards": {
         "docker_images": [
             "alpine",
+            "alpine:3.18",
             "debian-slim",
+            "debian:12-slim",
             "node:18-alpine",
+            "node:20-alpine",
             "python:3.11-slim",
             "python:3.10-slim",
-            "gcr.io/google-samples/hello-app:1.0"
+            "python:3.12-slim",
+            "gcr.io/google-samples/hello-app:1.0",
+            "nginx:alpine",
+            "openjdk:17-slim"
         ],
         "kubernetes_requirements": ["resources.limits", "resources.requests", "livenessProbe"],
         "ci_cd_allowed_platforms": [
@@ -74,6 +82,24 @@ POLICIES = {
             "aws_codepipeline",
             "travis_ci",
             "bitbucket_pipelines"
+        ]
+    },
+    "approved_non_gcp_providers": {
+        "cloud": ["AWS", "Azure", "Firebase", "Supabase"],
+        "edge_and_cdn": ["Cloudflare"],
+        "devops_artifacts": [
+            "Dockerfile", "Kubernetes YAML", "CI/CD Pipeline",
+            "Bash Script", "Terraform", "AWS CloudFormation",
+            "Azure ARM Template", "Firebase CLI config"
+        ],
+        "agentic_patterns": [
+            "Microservices Architecture", "Serverless Architecture",
+            "Monolithic Architecture", "Event-Driven Architecture",
+            "API-First Development", "DevOps and Continuous Delivery",
+            "Agile Development", "TDD", "BDD", "DDD"
+        ],
+        "dev_environments": [
+            "Python", "Node.js", "Go", "Java", "Rust", "C#", "Ruby", "PHP", "C++"
         ]
     }
 }
@@ -92,22 +118,29 @@ def list_gcp_resources(resource_type: str = "networks") -> str:
     """
     List the actual GCP resources of a certain type currently in the project.
     Use this to verify names before deletion.
-    Supported types: 'networks', 'instances', 'buckets', 'services'.
+    Supported types: 'networks', 'instances', 'buckets', 'services', 'cloudruns',
+    'clusters', 'sql', 'functions', 'artifacts', 'secrets'.
     """
     import subprocess
     import os
     logger.info(f"Listing GCP resources for type: {resource_type}")
-    
+
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-    project_flag = f" --project={project_id}" if project_id else ""
-    
+    p = f" --project={project_id}" if project_id else ""
+
     cmd_map = {
-        "networks": f"gcloud compute networks list --format=json{project_flag}",
-        "instances": f"gcloud compute instances list --format=json{project_flag}",
-        "buckets": f"gcloud storage ls --format=json{project_flag}",
-        "services": f"gcloud services list --enabled --format=json{project_flag}"
+        "networks":   f"gcloud compute networks list --format=json{p}",
+        "instances":  f"gcloud compute instances list --format=json{p}",
+        "buckets":    f"gcloud storage ls --format=json{p}",
+        "services":   f"gcloud services list --enabled --format=json{p}",
+        "cloudruns":  f"gcloud run services list --format=json{p}",
+        "clusters":   f"gcloud container clusters list --format=json{p}",
+        "sql":        f"gcloud sql instances list --format=json{p}",
+        "functions":  f"gcloud functions list --format=json{p}",
+        "artifacts":  f"gcloud artifacts repositories list --format=json{p}",
+        "secrets":    f"gcloud secrets list --format=json{p}",
     }
-    
+
     cmd = cmd_map.get(resource_type)
     if not cmd:
         return f"Error: Unsupported resource type: {resource_type}"
