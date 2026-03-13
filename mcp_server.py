@@ -106,9 +106,37 @@ def write_devops_artifact(filename: str, content: str) -> str:
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"Successfully wrote artifact to {file_path}"
+        return f"Successfully wrote artifact to generated_artifacts/{safe_filename}"
     except Exception as e:
         return f"Error writing artifact: {str(e)}"
+
+@mcp.tool()
+def execute_shell_command(command: str) -> str:
+    """
+    Execute a shell command (e.g. chmod, ls, mkdir) within the './generated_artifacts' directory.
+    Use this for setting permissions or managing local files.
+    """
+    import subprocess
+    import os
+    logger.info(f"Executing shell command: {command}")
+    
+    target_dir = os.path.join(os.getcwd(), "generated_artifacts")
+    os.makedirs(target_dir, exist_ok=True)
+    
+    try:
+        result = subprocess.run(
+            command, 
+            shell=True, 
+            cwd=target_dir, 
+            capture_output=True, 
+            text=True
+        )
+        if result.returncode == 0:
+            return f"Success: {result.stdout}"
+        else:
+            return f"Error ({result.returncode}): {result.stderr}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
 
 if __name__ == "__main__":
     # Start the FastMCP server when ran directly

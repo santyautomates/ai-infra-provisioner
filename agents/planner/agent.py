@@ -19,7 +19,7 @@ def get_planner_agent(mcp_toolset):
             "   - **Security**: If `security_policies.allow_public_ip` is false, you MUST add `--no-address` to VM creation. Always use `vm_default_image_family` and `vm_default_image_project` for instances.\\n"
             "   - **Tiers/Sizing**: Only use tiers from `allowed_machine_types` or `allowed_sql_tiers`.\\n"
             "   - **DevOps**: Dockerfiles must use `devops_standards.docker_images`. Kubernetes manifests must include `kubernetes_requirements`.\\n"
-            "4. Ensure project IDs in gcloud commands are the actual value: {gcp_project}.\\n"
+            f"4. Ensure project IDs in gcloud commands are the actual value: {gcp_project}.\\n"
             "5. Explain how the proposed plan complies with the policies.\\n"
             "CRITICAL: You MUST provide your final plan as a text response. Do NOT use the `run_code` tool as it is not registered. Only use `list_gcp_resources` and `get_organizational_policies`."
         ),
