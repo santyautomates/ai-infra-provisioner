@@ -187,12 +187,42 @@ if __name__ == "__main__":
 
     base_request = args.request or "Create a VM in us-central1 for order service in dev"
 
-    # When provisioning multiple instances in parallel, each job appends its
-    # index so the Planner generates uniquely numbered resource names
-    # (e.g., proj-dev-payments-vm-2 instead of proj-dev-payments-vm).
     if args.count > 1:
-        req = f"{base_request} — This is instance {args.index} of {args.count}. " \
-              f"Append '-{args.index}' as a suffix to ALL resource names to ensure uniqueness."
+        # ── Deterministic suffix injection ───────────────────────────────────
+        # Parse the 'Instance Name: <name>' field out of the request and
+        # rewrite it to '<name>-{index}' BEFORE sending to the Planner LLM.
+        # This guarantees unique, govenance-compliant names regardless of how
+        # the LLM interprets free-text instructions.
+        import re
+
+        def _inject_index_suffix(request_text: str, idx: int) -> str:
+            """
+            Find 'Instance Name: <value>' in the request and append '-<idx>' to
+            the value. Uses re.sub with word boundaries to avoid double-replacing
+            the name after it has already been suffixed.
+            """
+            pattern = r'(Instance Name\s*:\s*)(\S+)'
+            match = re.search(pattern, request_text, re.IGNORECASE)
+
+            if match:
+                original_name = match.group(2)
+                suffixed_name = f"{original_name}-{idx}"
+
+                # Replace ALL occurrences of the bare original_name with the
+                # suffixed version in ONE pass using a word-boundary pattern,
+                # so the already-suffixed text is never touched a second time.
+                name_pattern = r'(?<!\w)' + re.escape(original_name) + r'(?!\w|-\d)'
+                request_text = re.sub(name_pattern, suffixed_name, request_text)
+
+            # Belt-and-suspenders instruction for the LLM
+            request_text += (
+                f"\n\n[SYSTEM] This is parallel instance {idx} of {args.count}. "
+                f"All resource names MUST carry the '-{idx}' suffix already injected above."
+            )
+            return request_text
+
+        req = _inject_index_suffix(base_request, args.index)
+        print(f"\n[+] Instance {args.index}/{args.count} — request after suffix injection:\n{req}\n")
     else:
         req = base_request
 
