@@ -23,7 +23,7 @@ from agents.executor.agent import get_executor_agent
 load_dotenv()
 
 # --- GitHub Workflow Integration ---
-def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text):
+def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text, count: int = 1):
     """Triggers the GitHub Actions provisioning workflow."""
     url = f"https://api.github.com/repos/{owner_repo}/actions/workflows/{workflow_id}/dispatches"
     
@@ -35,14 +35,16 @@ def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text):
     data = {
         "ref": "main",
         "inputs": {
-            "request": request_text
+            "request": request_text,
+            "count": str(count),       # Drives the parallel matrix (1–10)
         }
     }
     
     try:
         response = requests.post(url, headers=headers, json=data)
         if response.status_code == 204:
-            return True, "🚀 GitHub Workflow triggered successfully! You can monitor it in the Actions tab."
+            instances_msg = f"{count} instance{'s' if count > 1 else ''}"
+            return True, f"🚀 GitHub Workflow triggered! Provisioning **{instances_msg}** in parallel. Monitor in the Actions tab."
         else:
             return False, f"Failed to trigger workflow: {response.status_code} - {response.text}"
     except Exception as e:
@@ -622,7 +624,14 @@ with st.container():
             machine_type = t_shirt_map[size_choice]
             
             image = st.selectbox("Source Image", ["debian-11", "ubuntu-2204-lts", "rhel-9", "windows-server-2022-dc"])
-            additional_input = f"Project ID: {project_id}\nInstance Name: {instance_name}\nZone: {zone}\nMachine Type: {machine_type}\nSource Image: {image}"
+            instance_count = st.number_input(
+                "Number of Instances",
+                min_value=1, max_value=10, value=1, step=1,
+                help="Provision N identical VMs in parallel via GitHub Actions matrix strategy (1–10)"
+            )
+            st.session_state["vm_instance_count"] = int(instance_count)
+            additional_input = f"Project ID: {project_id}\nInstance Name: {instance_name}\nZone: {zone}\nMachine Type: {machine_type}\nSource Image: {image}\nNumber of Instances: {instance_count}"
+
             
         elif service == "Cloud Run":
             st.markdown("""<div style=\"display: flex; align-items: center; gap: 10px; margin-bottom: 15px;\"><img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNHB4IiBoZWlnaHQ9IjI0cHgiIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiNhZWNiZmE7fS5jbHMtMSwuY2xzLTJ7ZmlsbC1ydWxlOmV2ZW5vZGQ7fS5jbHMtMntmaWxsOiM0Mjg1ZjQ7fTwvc3R5bGU+PC9kZWZzPjx0aXRsZT5JY29uXzI0cHhfQ2xvdWRSdW5fQ29sb3I8L3RpdGxlPjxnIGRhdGEtbmFtZT0iUHJvZHVjdCBJY29ucyI+PGcgPjxwb2x5Z29uIGNsYXNzPSJjbHMtMSIgcG9pbnRzPSI4LjkgMi42MyAxMi4wMiAxMiAyMS4zOCAxMiA4LjkgMi42MyIvPjxwb2x5Z29uIGNsYXNzPSJjbHMtMiIgcG9pbnRzPSIyMS4zOCAxMiAxMi4wMiAxMiA4LjkgMjEuMzggMjEuMzggMTIiLz48cG9seWdvbiBjbGFzcz0iY2xzLTIiIHBvaW50cz0iMy40NCAyMS4zOCA2LjU3IDE5LjgxIDguOSAxMiA1Ljc4IDEyIDMuNDQgMjEuMzgiLz48cG9seWdvbiBjbGFzcz0iY2xzLTEiIHBvaW50cz0iMy40NCAyLjYzIDUuNzggMTIgOC45IDEyIDYuNTcgNC4xOSAzLjQ0IDIuNjMiLz48L2c+PC9nPjwvc3ZnPg==\" width=\"32\" height=\"32\"><h3 style=\"margin: 0;\">Cloud Run Configuration</h3></div>""", unsafe_allow_html=True)
@@ -1002,7 +1011,9 @@ if (start_button or github_button) and feature != "Select a Feature":
             st.stop()
         
         st.toast("📤 Dispatching GitHub Workflow...", icon="⚙️")
-        success, message = trigger_github_workflow(github_pat, github_repo, github_workflow, user_request)
+        # Extract instance count set by the Compute Engine panel (defaults to 1 for other services)
+        _count = int(st.session_state.get("vm_instance_count", 1))
+        success, message = trigger_github_workflow(github_pat, github_repo, github_workflow, user_request, count=_count)
         if success:
             st.success(message)
             st.balloons()
