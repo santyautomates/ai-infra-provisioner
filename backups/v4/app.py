@@ -1,10 +1,23 @@
+import asyncio
 import os
 import sys
+import json
 import uuid
 import streamlit as st
 import requests
 import subprocess
 from dotenv import load_dotenv
+
+from google.adk import Runner
+from google.adk.models import Gemini
+from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
+from google.genai import types
+from mcp import StdioServerParameters
+
+from agents.planner.agent import get_planner_agent
+from agents.governance.agent import get_governance_agent
+from agents.executor.agent import get_executor_agent
 
 # Load environment variables
 load_dotenv()
@@ -38,12 +51,12 @@ def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text, c
         return False, f"An error occurred while triggering the workflow: {str(e)}"
 
 # Streamlit page config
-st.set_page_config(page_title="DevSecOps AI Infra Provisioner", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="AI Infra Provisioner", page_icon="☁️", layout="wide")
 
 st.markdown("""
 <div style="text-align: center; margin-bottom: 2rem;">
-    <h1 style="font-family: 'Inter', sans-serif; font-weight: 800; font-size: 3.5rem; letter-spacing: -0.05em; margin-bottom: 0.5rem; background: -webkit-linear-gradient(45deg, #10b981, #3b82f6, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DevSecOps AI Infra Provisioner</h1>
-    <p style="font-family: 'Inter', sans-serif; color: #64748b; font-size: 1.1rem; max-width: 700px; margin: 1rem auto;">🛡️ <b>DevSecOps</b>-native cloud infrastructure. AI-planned, policy-governed, and provisioned exclusively via <b>GitHub Actions</b>.</p>
+    <h1 style="font-family: 'Inter', sans-serif; font-weight: 800; font-size: 3.5rem; letter-spacing: -0.05em; margin-bottom: 0.5rem; background: -webkit-linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">AutoInfra</h1>
+    <p style="font-family: 'Inter', sans-serif; color: #64748b; font-size: 1.1rem; max-width: 600px; margin: 1rem auto;">🪄 Transform natural language into secure, compliant, and production-ready CLOUD infrastructure instantly.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -169,7 +182,7 @@ with st.container():
                 st.session_state[key] = "Select a Feature"
 
     with tab_cloud:
-        cloud_feature = st.selectbox("Select Cloud Provider", ["Select a Feature", "GCP Configuration", "AWS Configuration", "Azure Configuration"], key="cloud_feat", on_change=reset_other_features, args=("cloud_feat",))
+        cloud_feature = st.selectbox("Select Cloud Provider", ["Select a Feature", "GCP Configuration", "AWS Configuration", "Azure Configuration", "Firebase Configuration", "Supabase Configuration"], key="cloud_feat", on_change=reset_other_features, args=("cloud_feat",))
     with tab_devops:
         devops_feature = st.selectbox("Select DevOps Activity", ["Select a Feature", "Create CI/CD Pipeline", "Create Kubernetes Configuration", "Create Dockerfile", "Create Bash Script"], key="devops_feat", on_change=reset_other_features, args=("devops_feat",))
     with tab_agentic:
@@ -307,7 +320,15 @@ with st.container():
             "Select a CI/CD Provider",
             [
                 "Select a Provider",  # Default option
-                "GitHub Actions"
+                "GitHub Actions",
+                "GitLab CI",
+                "Jenkins",
+                "CircleCI",
+                "Travis CI",
+                "Azure Pipelines",
+                "AWS CodePipeline",
+                "Google Cloud Build",
+                "Bitbucket Pipelines"
             ]
         )
 
@@ -317,6 +338,54 @@ with st.container():
             pipeline_name = st.text_input("Pipeline Name", "GitHub Actions Pipeline")
             stages = st.text_area("Stages (comma separated)", "build, test, deploy")
             additional_input = f"Pipeline Name: {pipeline_name}\nProvider: GitHub Actions\nStages: {stages}"
+        elif provider == "GitLab CI":
+            st.markdown("### GitLab CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using GitLab CI.")
+            pipeline_name = st.text_input("Pipeline Name", "GitLab CI Pipeline")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: GitLab CI\nStages: {stages}"
+        elif provider == "Jenkins":
+            st.markdown("### Jenkins CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using Jenkins.")
+            pipeline_name = st.text_input("Pipeline Name", "Jenkins Pipeline")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: Jenkins\nStages: {stages}"
+        elif provider == "CircleCI":
+            st.markdown("### CircleCI CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using CircleCI.")
+            pipeline_name = st.text_input("Pipeline Name", "CircleCI Pipeline")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: CircleCI\nStages: {stages}"
+        elif provider == "Travis CI":
+            st.markdown("### Travis CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using Travis CI.")
+            pipeline_name = st.text_input("Pipeline Name", "Travis CI Pipeline")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: Travis CI\nStages: {stages}"
+        elif provider == "Azure Pipelines":
+            st.markdown("### Azure Pipelines CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using Azure Pipelines.")
+            pipeline_name = st.text_input("Pipeline Name", "Azure Pipelines")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: Azure Pipelines\nStages: {stages}"
+        elif provider == "AWS CodePipeline":
+            st.markdown("### AWS CodePipeline CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using AWS CodePipeline.")
+            pipeline_name = st.text_input("Pipeline Name", "AWS CodePipeline")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: AWS CodePipeline\nStages: {stages}"
+        elif provider == "Google Cloud Build":
+            st.markdown("### Google Cloud Build CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using Google Cloud Build.")
+            pipeline_name = st.text_input("Pipeline Name", "Google Cloud Build Pipeline")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: Google Cloud Build\nStages: {stages}"
+        elif provider == "Bitbucket Pipelines":
+            st.markdown("### Bitbucket Pipelines CI/CD Pipeline")
+            st.write("Configure your CI/CD pipeline using Bitbucket Pipelines.")
+            pipeline_name = st.text_input("Pipeline Name", "Bitbucket Pipelines")
+            stages = st.text_area("Stages (comma separated)", "build, test, deploy")
+            additional_input = f"Pipeline Name: {pipeline_name}\nProvider: Bitbucket Pipelines\nStages: {stages}"
 
     elif feature == "Azure Configuration":
         service = st.selectbox(
@@ -749,7 +818,120 @@ with st.container():
             alert_policy = st.text_input("Alert Policy Name", "High CPU Alert")
             additional_input = f"Project ID: {project_id}\nWorkspace Name: {workspace_name}\nAlert Policy Name: {alert_policy}"
 
-    # Remove Dry Run from the middle if preferred, but for now we keep the layout consistent.
+    elif feature == "Firebase Configuration":
+        project_name = st.text_input("Project Name", "my-firebase-project")
+        features = st.text_area("Features to enable", "Authentication, Firestore")
+        additional_input = f"Project Name: {project_name}\nFeatures: {features}"
+    elif feature == "Supabase Configuration":
+        service = st.selectbox("Select Supabase Service", ["Select Service", "Hosting", "Authentication", "Storage", "Database"])
+        if service == "Hosting":
+            project_name = st.text_input("Project Name", "my-supabase-project")
+            region = st.selectbox("Region", ["us-central1", "europe-west1", "asia-northeast1"])
+            additional_input = f"Project Name: {project_name}\nRegion: {region}"
+        elif service == "Authentication":
+            project_name = st.text_input("Project Name", "my-supabase-project")
+            auth_providers = st.text_input("Authentication Providers", "Email, Google")
+            additional_input = f"Project Name: {project_name}\nAuthentication Providers: {auth_providers}"
+        # Add more services as needed
+    elif feature == "Cloudflare Configuration":
+        service = st.selectbox("Select Cloudflare Service", ["Select Service", "DNS", "Security", "Workers"])
+        if service == "DNS":
+            project_name = st.text_input("Project Name", "my-cloudflare-project")
+            dns_records = st.text_area("DNS Records", "A, CNAME, TXT")
+            additional_input = f"Project Name: {project_name}\nDNS Records: {dns_records}"
+        elif service == "Security":
+            project_name = st.text_input("Project Name", "my-cloudflare-project")
+            security_features = st.text_area("Security Features", "WAF, DDoS Protection")
+            additional_input = f"Project Name: {project_name}\nSecurity Features: {security_features}"
+
+    elif feature == "Developer Configuration":
+        language = st.selectbox(
+            "Select a Language",
+            [
+                "Select a Language",  # Default option
+                "Python",
+                "Node.js",
+                "Java",
+                "Rust",
+                "Go",
+                "C#",
+                "Ruby",
+                "PHP",
+                "C++"
+            ]
+        )
+
+        if language == "Python":
+            st.markdown("### Python Development Environment")
+            st.write("Configure your Python development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "Python Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "ms-python.python, ms-toolsai.jupyter")
+            settings = st.text_area("VS Code Settings", "{\n    \"python.pythonPath\": \"/usr/bin/python3\",\n    \"python.linting.enabled\": true\n}")
+            additional_input = f"Language: Python\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "Node.js":
+            st.markdown("### Node.js Development Environment")
+            st.write("Configure your Node.js development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "Node.js Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "dbaeumer.vscode-eslint, esbenp.prettier-vscode")
+            settings = st.text_area("VS Code Settings", "{\n    \"javascript.format.enable\": true,\n    \"eslint.enable\": true\n}")
+            additional_input = f"Language: Node.js\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "Java":
+            st.markdown("### Java Development Environment")
+            st.write("Configure your Java development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "Java Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "vscjava.vscode-java-pack")
+            settings = st.text_area("VS Code Settings", "{\n    \"java.home\": \"/usr/lib/jvm/java-11-openjdk-amd64\",\n    \"java.errors.incompleteClasspath.severity\": \"warning\"\n}")
+            additional_input = f"Language: Java\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "Rust":
+            st.markdown("### Rust Development Environment")
+            st.write("Configure your Rust development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "Rust Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "rust-lang.rust, matklad.rust-analyzer")
+            settings = st.text_area("VS Code Settings", "{\n    \"rust-client.channel\": \"stable\",\n    \"rust-analyzer.cargo.allFeatures\": true\n}")
+            additional_input = f"Language: Rust\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "Go":
+            st.markdown("### Go Development Environment")
+            st.write("Configure your Go development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "Go Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "golang.go")
+            settings = st.text_area("VS Code Settings", "{\n    \"go.useLanguageServer\": true,\n    \"go.lintOnSave\": \"package\"\n}")
+            additional_input = f"Language: Go\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "C#":
+            st.markdown("### C# Development Environment")
+            st.write("Configure your C# development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "C# Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "ms-dotnettools.csharp")
+            settings = st.text_area("VS Code Settings", "{\n    \"csharp.suppressDotnetRestoreNotification\": true\n}")
+            additional_input = f"Language: C#\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "Ruby":
+            st.markdown("### Ruby Development Environment")
+            st.write("Configure your Ruby development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "Ruby Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "rebornix.ruby")
+            settings = st.text_area("VS Code Settings", "{\n    \"ruby.useLanguageServer\": true,\n    \"ruby.lint\": {\n        \"rubocop\": true\n    }\n}")
+            additional_input = f"Language: Ruby\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "PHP":
+            st.markdown("### PHP Development Environment")
+            st.write("Configure your PHP development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "PHP Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "felixfbecker.php-intellisense, bmewburn.vscode-intelephense-client")
+            settings = st.text_area("VS Code Settings", "{\n    \"php.executablePath\": \"/usr/bin/php\",\n    \"php.validate.executablePath\": \"/usr/bin/php\"\n}")
+            additional_input = f"Language: PHP\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
+
+        elif language == "C++":
+            st.markdown("### C++ Development Environment")
+            st.write("Configure your C++ development environment with VS Code settings.")
+            config_name = st.text_input("Configuration Name", "C++ Dev Environment")
+            extensions = st.text_area("VS Code Extensions", "ms-vscode.cpptools")
+            settings = st.text_area("VS Code Settings", "{\n    \"C_Cpp.updateChannel\": \"Insiders\",\n    \"C_Cpp.intelliSenseEngine\": \"Default\"\n}")
+            additional_input = f"Language: C++\nConfiguration Name: {config_name}\nVS Code Extensions: {extensions}\nVS Code Settings: {settings}"
 
     # --- Dry Run Toggle ---
     dry_run = st.toggle("🧪 Dry Run (Preview commands only — no deployment)", value=False,
@@ -774,10 +956,14 @@ with st.container():
                     st.markdown("ℹ️  Image: `debian-11 / debian-cloud`")
                 st.markdown("ℹ️  Session ID: `{}`".format(st.session_state.session_uid))
 
-    github_button = st.button("🚀 Deploy via GitHub Actions", type="primary", use_container_width=True, key="deploy_gh_btn")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_button = st.button("▶️ Start Local", type="primary", use_container_width=True)
+    with col2:
+        github_button = st.button("🚀 Deploy via GitHub", type="secondary", use_container_width=True)
 
 user_request = ""
-if feature != "Select a Feature":
+if (start_button or github_button) and feature != "Select a Feature":
     if feature == "Agentic Development":
         internal_guidance = "Guide the development over several steps, including planning, design, implementation, and testing. Ensure to create complete and well-documented applications."
         user_request = f"Agentic Development:\n{additional_input}\n{internal_guidance}"
@@ -791,8 +977,8 @@ if feature != "Select a Feature":
         internal_guidance = "Ensure the configuration includes resource limits, readiness and liveness probes, and follows Kubernetes best practices."
         user_request = f"Create a Kubernetes config for a web application with details: {additional_input}. {internal_guidance}"
     elif feature == "Create CI/CD Pipeline":
-        internal_guidance = "The GitHub Actions pipeline should include stages for building, testing, and deploying the application, with rollback support."
-        user_request = f"Create a GitHub Actions CI/CD pipeline with details: {additional_input}. {internal_guidance}"
+        internal_guidance = "The pipeline should include stages for building, testing, and deploying the application, and should support rollback mechanisms."
+        user_request = f"Create a CI/CD pipeline for a Python project with details: {additional_input}. {internal_guidance}"
     elif feature == "Azure Configuration":
         internal_guidance = "Include detailed resource definitions, dependencies, and parameterized templates for flexibility."
         user_request = f"Create an Azure Resource Manager template for {service} with details: {additional_input}. {internal_guidance}"
@@ -800,8 +986,20 @@ if feature != "Select a Feature":
         internal_guidance = "Ensure the template includes IAM roles and policies, and follows AWS best practices for security and scalability."
         user_request = f"Create a CloudFormation template for {service} with details: {additional_input}. {internal_guidance}"
     elif feature == "GCP Configuration":
-        internal_guidance = "Draft standard gcloud CLI commands to create these resources. Do not use Deployment Manager or Terraform. Ensure all commands are valid and follow GCP best practices."
+        internal_guidance = "Draft standard gcloud CLI commands to create these resources. Do not use Deployment Manager or Terraform. Ensure all commands are valid and follow GCP best practices. Use the correct flags based on the details."
         user_request = f"Create the following GCP {service} via gcloud commands with details: {additional_input}. {internal_guidance}"
+    elif feature == "Firebase Configuration":
+        internal_guidance = "Ensure the configuration includes authentication, database rules, and hosting settings."
+        user_request = f"Create a Firebase configuration with details: {additional_input}. {internal_guidance}"
+    elif feature == "Supabase Configuration":
+        internal_guidance = "Ensure the configuration includes database settings, authentication, and storage settings."
+        user_request = f"Create a Supabase configuration for {service} with details: {additional_input}. {internal_guidance}"
+    elif feature == "Cloudflare Configuration":
+        internal_guidance = "Ensure the configuration includes DNS settings, security settings, and workers settings."
+        user_request = f"Create a Cloudflare configuration for {service} with details: {additional_input}. {internal_guidance}"
+    elif feature == "Developer Configuration":
+        internal_guidance = "Include common development tools and configurations, ensuring they follow best practices for development environments."
+        user_request = f"Create a .nix configuration with details: {additional_input}. {internal_guidance}"
 
     if not user_request:
         st.warning("Please define your requirements first.")
@@ -809,10 +1007,11 @@ if feature != "Select a Feature":
 
     if github_button:
         if not github_pat:
-            st.error("\u26a0\ufe0f Please provide a GitHub Personal Access Token in the sidebar.")
+            st.error("Please provide a GitHub Personal Access Token in the sidebar.")
             st.stop()
-
-        st.toast("\U0001f4e4 Dispatching to GitHub Actions...", icon="\u2699\ufe0f")
+        
+        st.toast("📤 Dispatching GitHub Workflow...", icon="⚙️")
+        # Extract instance count set by the Compute Engine panel (defaults to 1 for other services)
         _count = int(st.session_state.get("vm_instance_count", 1))
         success, message = trigger_github_workflow(github_pat, github_repo, github_workflow, user_request, count=_count)
         if success:
@@ -832,7 +1031,157 @@ if feature != "Select a Feature":
     })
 
     if dry_run:
-        st.info("\U0001f9ea **Dry Run Mode** \u2014 No resources will be provisioned.")
-        with st.expander("\U0001f4cb Request that would be sent to GitHub Actions:"):
+        st.info("🧪 **Dry Run Mode** — Pipeline stopped after planning. No resources will be created.")
+        with st.expander("📋 Request that would be sent:"):
             st.code(user_request, language="text")
         st.stop()
+
+    # --- Local Execution ---
+    st.toast("🚀 Request captured! Starting Local AI Pipeline...", icon="⏳")
+
+    if "GOOGLE_CLOUD_PROJECT" not in os.environ:
+        st.error("Missing GOOGLE_CLOUD_PROJECT in .env file.")
+        st.stop()
+        
+    # Safety Check: Ensure the UI requested Project ID matches the backend authorized Project ID
+    if "Project ID:" in additional_input:
+        import re
+        match = re.search(r"Project ID:\s*([^\n]+)", additional_input)
+        if match:
+            requested_project = match.group(1).strip()
+            actual_project = os.environ["GOOGLE_CLOUD_PROJECT"]
+            if requested_project != actual_project:
+                st.error(f"🛑 Security Alert: The Project ID '{requested_project}' requested in the UI does not match the authorized backend environment Project ID '{actual_project}'.\n\nPlease update the UI field to match the backend project to prevent deploying to unintended environments.")
+                st.stop()
+
+    # --- Setup ADK / MCP ---
+    server_params = StdioConnectionParams(
+        server_params=StdioServerParameters(
+            command=sys.executable,
+            args=["mcp_server.py"],
+        )
+    )
+    mcp_toolset = McpToolset(connection_params=server_params)
+    
+    # Initialize Agents
+    session_service = InMemorySessionService()
+    planner = get_planner_agent(mcp_toolset)
+    governance = get_governance_agent(mcp_toolset)
+    executor = get_executor_agent(mcp_toolset)
+
+    # --- Session UUID for isolation ---
+    session_uid = st.session_state.session_uid
+
+    async def run_flow():
+        # --- Progress Indicator ---
+        progress_cols = st.columns(3)
+        with progress_cols[0]:
+            step1_status = st.empty()
+            step1_status.markdown("⏳ **1. Planning**")
+        with progress_cols[1]:
+            step2_status = st.empty()
+            step2_status.markdown("⬜ 2. Governance")
+        with progress_cols[2]:
+            step3_status = st.empty()
+            step3_status.markdown("⬜ 3. Execution")
+        st.markdown("---")
+
+        # --- Step 1: Planning ---
+        st.markdown("### 1. Infrastructure Planning")
+        plan_placeholder = st.empty()
+        
+        with st.spinner("Analyzing request and fetching external context..."):
+            runner1 = Runner(app_name="ui", agent=planner, session_service=session_service, auto_create_session=True)
+            runner1._config = types.GenerateContentConfig(tools=[mcp_toolset], temperature=0.0)
+            
+            plan_text = ""
+            try:
+                async for event in runner1.run_async(
+                    user_id="user", session_id=f"plan-{session_uid}", 
+                    new_message=types.Content(parts=[types.Part.from_text(text=f"User Request: {user_request}")])
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if part.text:
+                                plan_text += part.text
+                                plan_placeholder.markdown(plan_text)
+            except Exception as e:
+                st.error(f"Planning failed: {str(e)}")
+                return
+        
+        step1_status.markdown("✅ **1. Planning**")
+        step2_status.markdown("⏳ **2. Governance**")
+
+        if not plan_text.strip():
+            st.error("The Planner failed to return a valid plan.")
+            return
+
+        # --- Step 2: Governance ---
+        st.markdown("---")
+        st.markdown("### 2. Security & Governance Review")
+        validation_placeholder = st.empty()
+
+        with st.spinner("Auditing plan against organizational policies (Regions, Naming, Machine Types)..."):
+            runner2 = Runner(app_name="ui", agent=governance, session_service=session_service, auto_create_session=True)
+            
+            validation_text = ""
+            try:
+                async for event in runner2.run_async(
+                    user_id="user", session_id=f"gov-{session_uid}", 
+                    new_message=types.Content(parts=[types.Part.from_text(text=f"Please review this proposed plan:\n{plan_text}")])
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if part.text:
+                                validation_text += part.text
+                                validation_placeholder.markdown(validation_text)
+            except Exception as e:
+                st.error(f"Governance check failed: {str(e)}")
+                return
+
+        if "REJECTED" in validation_text:
+            st.error("🚨 Governance rejected the plan. Execution aborted.")
+            step2_status.markdown("❌ **2. Governance**")
+            st.session_state.request_history[-1]["status"] = "failed"
+            return
+
+        if "APPROVED" not in validation_text:
+            st.error("🚨 Governance response ambiguous. Execution aborted.")
+            step2_status.markdown("❌ **2. Governance**")
+            st.session_state.request_history[-1]["status"] = "failed"
+            return
+
+        step2_status.markdown("✅ **2. Governance**")
+        step3_status.markdown("⏳ **3. Execution**")
+        st.success("✅ Governance Checks Passed!")
+
+        # --- Step 3: Execution ---
+        st.markdown("---")
+        st.markdown("### 3. Execution")
+        exec_placeholder = st.empty()
+
+        with st.spinner("Applying changes to Google Cloud Platform..."):
+            runner3 = Runner(app_name="ui", agent=executor, session_service=session_service, auto_create_session=True)
+            
+            exec_text = ""
+            try:
+                async for event in runner3.run_async(
+                    user_id="user", session_id=f"exec-{session_uid}", 
+                    new_message=types.Content(parts=[types.Part.from_text(text=f"Execute the following APPROVED plan:\n{validation_text}")])
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if part.text:
+                                exec_text += part.text
+                                exec_placeholder.code(exec_text, language="bash")
+            except Exception as e:
+                st.error(f"Execution failed: {str(e)}")
+                return
+                
+        step3_status.markdown("✅ **3. Execution**")
+        st.session_state.request_history[-1]["status"] = "success"
+        st.success("🎉 Infrastructure Provisioning Complete!")
+        st.balloons()
+
+    # Start the async loop
+    asyncio.run(run_flow())

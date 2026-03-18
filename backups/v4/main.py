@@ -59,7 +59,7 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
     # Use native ADK McpToolset wrapping
     mcp_toolset = McpToolset(connection_params=server_params)
 
-    print("\n[🛡️] Initializing ShieldInfra AI Orchestrator...")
+    print("\\n[+] Initializing ADK MCP Toolset...")
 
     if "GOOGLE_API_KEY" not in os.environ:
         print("ERROR: GOOGLE_API_KEY environment variable is not set. Please set it before running.")
@@ -78,7 +78,7 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
     session_service = InMemorySessionService()
 
     # Step 1
-    print("\n[🛡️] Step 1: Shield Planning & Architecture...")
+    print("\\n[+] Step 1: Planning Infrastructure...")
     runner1 = Runner(
         app_name="infra_provisioner",
         agent=planner,
@@ -176,7 +176,7 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ShieldInfra: DevSecOps AI Provisioner")
+    parser = argparse.ArgumentParser(description="AI-Driven Infra Provisioner")
     parser.add_argument("--request", type=str, required=False,
                         help="Natural language infrastructure request")
     parser.add_argument("--index", type=int, default=1,
