@@ -4,13 +4,54 @@ on:
   workflow_dispatch:
     inputs:
       request:
-        description: 'Natural language infrastructure request'
+        description: 'Natural language infrastructure request (e.g. "Create a VM for payments service in dev in us-central1")'
         required: true
-        default: 'Create a VM in us-central1 for order service in dev'
+        default: 'Create a VM in us-central1 for payments service in dev'
+      count:
+        description: 'Number of instances to provision in parallel (1–10)'
+        required: false
+        default: '1'
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'dev'
+        type: choice
+        options: [dev, stag, prod]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 — Setup: Build the dynamic matrix from the count input
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
-  provision:
+  setup:
+    name: Build Instance Matrix
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - name: Build matrix from count
+        id: build
+        run: |
+          COUNT=${{ github.event.inputs.count }}
+          # Clamp to 1–10 for safety
+          if [ "$COUNT" -lt 1 ]; then COUNT=1; fi
+          if [ "$COUNT" -gt 10 ]; then COUNT=10; fi
+          # Build JSON array: [1, 2, ..., COUNT]
+          MATRIX=$(python3 -c "import json; print(json.dumps({'index': list(range(1, int($COUNT)+1))}))")
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Provisioning $COUNT instance(s) in parallel"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 2 — Provision: Run N parallel provisioning pipelines
+# ─────────────────────────────────────────────────────────────────────────────
+  provision:
+    name: Provision Instance ${{ matrix.index }} of ${{ github.event.inputs.count }}
+    needs: setup
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+      fail-fast: false   # One failure doesn't cancel the other instances
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -33,8 +74,47 @@ jobs:
       - name: Set up gcloud
         uses: 'google-github-actions/setup-gcloud@v2'
 
-      # Download the existing cumulative audit artifact so we can append to it.
-      # continue-on-error: true handles the first-ever run where no artifact exists yet.
+      - name: Run Provisioner (Instance ${{ matrix.index }})
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          INSTANCE_INDEX: ${{ matrix.index }}
+          INSTANCE_COUNT: ${{ github.event.inputs.count }}
+        run: |
+          python main.py \
+            --request "${{ github.event.inputs.request }}" \
+            --index ${{ matrix.index }} \
+            --count ${{ github.event.inputs.count }}
+
+      - name: Upload Generated Artifacts (Instance ${{ matrix.index }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-artifacts-${{ matrix.index }}
+          path: generated_artifacts/
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload Audit Logs (Instance ${{ matrix.index }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-logs-instance-${{ matrix.index }}
+          path: audit_logs/
+          if-no-files-found: warn
+          overwrite: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 3 — Merge: Collect all per-instance logs into one cumulative artifact
+# ─────────────────────────────────────────────────────────────────────────────
+  merge-audit-logs:
+    name: Merge Audit Logs → Single Artifact
+    needs: provision
+    runs-on: ubuntu-latest
+    if: always()   # Run even if some instances failed
+
+    steps:
+      # Restore previous cumulative audit artifact (silent fail on first run)
       - name: Restore Previous Audit Logs
         continue-on-error: true
         uses: actions/download-artifact@v4
@@ -42,32 +122,49 @@ jobs:
           name: audit-logs
           path: audit_logs/
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Run Provisioner
-        env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
-        run: |
-          python main.py --request "${{ github.event.inputs.request }}"
-
-      - name: Upload Generated Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
+      # Download all per-instance audit logs and merge into audit_logs/
+      - name: Download All Per-Instance Audit Logs
+        uses: actions/download-artifact@v4
         with:
-          name: infrastructure-artifacts
-          path: generated_artifacts/
-          if-no-files-found: warn
-          overwrite: true
+          pattern: audit-logs-instance-*
+          path: per_instance_logs/
+          merge-multiple: false
 
-      # Single audit artifact — named 'audit-logs' (no run_id suffix).
-      # Overwrite: true means each run replaces the artifact but now contains
-      # ALL previous days' sub-folders (YYYY-MM-DD/) because we restored them above.
+      # Merge: each instance wrote to audit_logs/YYYY-MM-DD/*.log
+      # Combine them all into a single audit_logs/ tree, appending per-day files
+      - name: Merge into cumulative audit_logs/
+        run: |
+          find per_instance_logs/ -type f -name "*.log" | while read src; do
+            # Reconstruct target path: strip leading 'per_instance_logs/<artifact_name>/'
+            rel=$(echo "$src" | sed 's|per_instance_logs/[^/]*/||')
+            dest="audit_logs/$rel"
+            mkdir -p "$(dirname "$dest")"
+            cat "$src" >> "$dest"
+            echo "  merged: $src → $dest"
+          done
+
+      # Upload the single merged artifact (overwrites each run — grows day by day)
       - name: Upload Cumulative Audit Logs
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: audit-logs
           path: audit_logs/
+          if-no-files-found: warn
+          overwrite: true
+
+      # Also merge generated artifacts from all instances
+      - name: Download All Infrastructure Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: infrastructure-artifacts-*
+          path: all_artifacts/
+          merge-multiple: true
+
+      - name: Upload Merged Infrastructure Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-artifacts
+          path: all_artifacts/
           if-no-files-found: warn
           overwrite: true

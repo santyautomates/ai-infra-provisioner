@@ -6,6 +6,9 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 
+# Per-service policy modules
+from policies.vm_policy import VM_POLICY
+
 # Load environment variables
 load_dotenv()
 
@@ -16,92 +19,88 @@ logger = logging.getLogger("mcp_server")
 # Initialize FastMCP server
 mcp = FastMCP("infra-governance-mcp")
 
-# Organizational Policies (Mock Data)
+# Global organisational policies.
+# ─ VM-specific rules have been moved to policies/vm_policy.py (served via get_vm_policies()).
+# ─ As each service gets its own policy module, its entries will be removed from here too.
 POLICIES = {
+    # Regions apply globally across all GCP services
     "allowed_regions": ["us-central1", "europe-west1", "asia-northeast1"],
-    "allowed_machine_types": ["e2-micro", "e2-small", "e2-medium", "n1-standard-1"],
+
+    # SQL tiers — will be moved to policies/sql_policy.py in a future iteration
     "allowed_sql_tiers": ["db-f1-micro", "db-g1-small", "db-custom-1-3840"],
+
+    # Naming conventions for all services EXCEPT VM (moved to vm_policy.py)
     "naming_conventions": {
-        "vm": "proj-[env]-[service]-vm",
-        "gke": "proj-[env]-[service]-cluster",
-        "sql": "proj-[env]-[service]-db",
-        "bucket": "proj-[env]-[service]-storage",
-        "pubsub_topic": "proj-[env]-[service]-topic",
-        "pubsub_subscription": "proj-[env]-[service]-sub",
-        "redis": "proj-[env]-[service]-cache",
-        "cloudrun": "proj-[env]-[service]-cloudrun",
-        "vpc": "proj-[env]-[service]-vpc",
-        "subnet": "proj-[env]-[service]-subnet",
-        "artifact_registry": "proj-[env]-[service]-repo",
-        "cloud_function": "proj-[env]-[service]-fn",
-        "secret": "proj-[env]-[service]-secret",
-        "iam_sa": "proj-[env]-[service]-sa",
-        "vertex_endpoint": "proj-[env]-[service]-endpoint",
-        "bigquery_dataset": "proj_[env]_[service]_dataset",
-        "bigquery_table": "proj_[env]_[service]_table",
-        "bigtable": "proj-[env]-[service]-bt",
-        "spanner": "proj-[env]-[service]-spanner",
-        "firestore": "proj-[env]-[service]-firestore",
-        "cloud_build_trigger": "proj-[env]-[service]-trigger",
-        "load_balancer": "proj-[env]-[service]-lb",
-        "app_engine": "proj-[env]-[service]-app",
-        "memorystore": "proj-[env]-[service]-cache",
-        "monitoring_alert": "proj-[env]-[service]-alert",
-        "default_fallback": "proj-[env]-[service]-[short_resource_name]"
+        "gke":                "proj-[env]-[service]-cluster",
+        "sql":                "proj-[env]-[service]-db",
+        "bucket":             "proj-[env]-[service]-storage",
+        "pubsub_topic":       "proj-[env]-[service]-topic",
+        "pubsub_subscription":"proj-[env]-[service]-sub",
+        "redis":              "proj-[env]-[service]-cache",
+        "cloudrun":           "proj-[env]-[service]-cloudrun",
+        "vpc":                "proj-[env]-[service]-vpc",
+        "subnet":             "proj-[env]-[service]-subnet",
+        "artifact_registry":  "proj-[env]-[service]-repo",
+        "cloud_function":     "proj-[env]-[service]-fn",
+        "secret":             "proj-[env]-[service]-secret",
+        "iam_sa":             "proj-[env]-[service]-sa",
+        "vertex_endpoint":    "proj-[env]-[service]-endpoint",
+        "bigquery_dataset":   "proj_[env]_[service]_dataset",
+        "bigquery_table":     "proj_[env]_[service]_table",
+        "bigtable":           "proj-[env]-[service]-bt",
+        "spanner":            "proj-[env]-[service]-spanner",
+        "firestore":          "proj-[env]-[service]-firestore",
+        "cloud_build_trigger":"proj-[env]-[service]-trigger",
+        "load_balancer":      "proj-[env]-[service]-lb",
+        "app_engine":         "proj-[env]-[service]-app",
+        "memorystore":        "proj-[env]-[service]-cache",
+        "monitoring_alert":   "proj-[env]-[service]-alert",
+        "default_fallback":   "proj-[env]-[service]-[short_resource_name]",
     },
+
+    # Cloud Run security — will move to cloud_run_policy.py later
     "security_policies": {
-        "vm_default_image_family": "debian-11",
-        "vm_default_image_project": "debian-cloud",
-        "allow_public_ip": False,
-        "allow_unauthenticated_cloudrun": True
+        "allow_unauthenticated_cloudrun": True,
     },
+
     "environments": ["dev", "stag", "prod"],
+
     "devops_standards": {
         "docker_images": [
-            "alpine",
-            "alpine:3.18",
-            "debian-slim",
-            "debian:12-slim",
-            "node:18-alpine",
-            "node:20-alpine",
-            "python:3.11-slim",
-            "python:3.10-slim",
-            "python:3.12-slim",
+            "alpine", "alpine:3.18",
+            "debian-slim", "debian:12-slim",
+            "node:18-alpine", "node:20-alpine",
+            "python:3.11-slim", "python:3.10-slim", "python:3.12-slim",
             "gcr.io/google-samples/hello-app:1.0",
             "nginx:alpine",
-            "openjdk:17-slim"
+            "openjdk:17-slim",
         ],
         "kubernetes_requirements": ["resources.limits", "resources.requests", "livenessProbe"],
         "ci_cd_allowed_platforms": [
-            "github_actions",
-            "gitlab_ci",
-            "google_cloud_build",
-            "jenkins",
-            "circleci",
-            "azure_pipelines",
-            "aws_codepipeline",
-            "travis_ci",
-            "bitbucket_pipelines"
-        ]
+            "github_actions", "gitlab_ci", "google_cloud_build",
+            "jenkins", "circleci", "azure_pipelines",
+            "aws_codepipeline", "travis_ci", "bitbucket_pipelines",
+        ],
     },
+
     "approved_non_gcp_providers": {
-        "cloud": ["AWS", "Azure", "Firebase", "Supabase"],
-        "edge_and_cdn": ["Cloudflare"],
+        "cloud":           ["AWS", "Azure", "Firebase", "Supabase"],
+        "edge_and_cdn":    ["Cloudflare"],
         "devops_artifacts": [
             "Dockerfile", "Kubernetes YAML", "CI/CD Pipeline",
             "Bash Script", "Terraform", "AWS CloudFormation",
-            "Azure ARM Template", "Firebase CLI config"
+            "Azure ARM Template", "Firebase CLI config",
         ],
         "agentic_patterns": [
             "Microservices Architecture", "Serverless Architecture",
             "Monolithic Architecture", "Event-Driven Architecture",
             "API-First Development", "DevOps and Continuous Delivery",
-            "Agile Development", "TDD", "BDD", "DDD"
+            "Agile Development", "TDD", "BDD", "DDD",
         ],
         "dev_environments": [
-            "Python", "Node.js", "Go", "Java", "Rust", "C#", "Ruby", "PHP", "C++"
-        ]
-    }
+            "Python", "Node.js", "Go", "Java", "Rust", "C#", "Ruby", "PHP", "C++",
+        ],
+    },
 }
 
 @mcp.tool()
@@ -109,9 +108,34 @@ def get_organizational_policies() -> str:
     """
     Retrieve the standard organizational policies, naming conventions,
     allowed regions, and internal security guardrails for infrastructure provisioning.
+    Use this for global/cross-service lookups (DevOps standards, non-GCP providers, etc.).
+    For a specific GCP service, prefer the dedicated service policy tool (e.g. get_vm_policies).
     """
     logger.info("Fetching organizational policies via MCP")
     return json.dumps(POLICIES, indent=2)
+
+
+@mcp.tool()
+def get_vm_policies() -> str:
+    """
+    Retrieve the FULL governance policy for GCP Compute Engine VM provisioning.
+    Use this tool whenever the user request involves creating, modifying, or deleting a VM.
+
+    Returns detailed rules for:
+    - Naming convention and regex pattern (proj-[env]-[service]-vm)
+    - Allowed machine types per environment tier (dev/stag/prod)
+    - Allowed regions and zones
+    - Required OS image (debian-11, debian-cloud)
+    - Network security (no public IP, OS Login)
+    - Disk type and size limits
+    - Required resource labels (env, service, managed-by)
+    - Required API enablement steps
+    - A ready-to-use gcloud command template
+    - Deletion policy
+    - Common rejection reasons with exact remediation steps
+    """
+    logger.info("Fetching VM-specific governance policies via MCP")
+    return json.dumps(VM_POLICY, indent=2)
 
 @mcp.tool()
 def list_gcp_resources(resource_type: str = "networks") -> str:

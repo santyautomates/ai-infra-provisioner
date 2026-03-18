@@ -35,11 +35,13 @@ def _write_audit_summary(data: dict):
         f.write(json.dumps(data) + "\n")
     print(f"\n[+] Audit summary appended → {path}")
 
-async def run_provisioning_flow(user_request: str):
+async def run_provisioning_flow(user_request: str, instance_index: int = 1, total_count: int = 1):
     run_ts = datetime.now(timezone.utc).isoformat()
     audit = {
         "run_timestamp": run_ts,
         "request": user_request,
+        "instance_index": instance_index,
+        "total_count": total_count,
         "plan": None,
         "governance_status": None,
         "governance_response": None,
@@ -175,12 +177,23 @@ async def run_provisioning_flow(user_request: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AI-Driven Infra Provisioner")
-    parser.add_argument("--request", type=str, required=False, help="Natural language infrastructure request")
+    parser.add_argument("--request", type=str, required=False,
+                        help="Natural language infrastructure request")
+    parser.add_argument("--index", type=int, default=1,
+                        help="Instance index when running as part of a parallel matrix (1-based)")
+    parser.add_argument("--count", type=int, default=1,
+                        help="Total number of instances being provisioned in this run")
     args = parser.parse_args()
-    
-    if args.request:
-        req = args.request
-    else:
-        req = "Create a VM in us-central1 for order service in dev"
 
-    asyncio.run(run_provisioning_flow(req))
+    base_request = args.request or "Create a VM in us-central1 for order service in dev"
+
+    # When provisioning multiple instances in parallel, each job appends its
+    # index so the Planner generates uniquely numbered resource names
+    # (e.g., proj-dev-payments-vm-2 instead of proj-dev-payments-vm).
+    if args.count > 1:
+        req = f"{base_request} — This is instance {args.index} of {args.count}. " \
+              f"Append '-{args.index}' as a suffix to ALL resource names to ensure uniqueness."
+    else:
+        req = base_request
+
+    asyncio.run(run_provisioning_flow(req, instance_index=args.index, total_count=args.count))
