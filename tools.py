@@ -1,9 +1,26 @@
 import subprocess
 import logging
-from typing import TypedDict
+import json
+import os
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+AUDIT_LOG_DIR = "audit_logs"
+
+def _get_dated_log_path(filename: str) -> str:
+    """Returns audit_logs/YYYY-MM-DD/<filename> for today's date (UTC)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day_dir = os.path.join(AUDIT_LOG_DIR, today)
+    os.makedirs(day_dir, exist_ok=True)
+    return os.path.join(day_dir, filename)
+
+def _write_audit_entry(entry: dict):
+    """Append a single JSON audit record to today's gcloud_audit.log."""
+    path = _get_dated_log_path("gcloud_audit.log")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
 class GcloudCommandArgs(BaseModel):
     command: str = Field(
@@ -26,12 +43,19 @@ def run_gcloud(args: GcloudCommandArgs) -> str:
     if not cmd.startswith("gcloud "):
         return "Error: Execution blocked. Only 'gcloud' commands are allowed."
     
+    timestamp = datetime.now(timezone.utc).isoformat()
     logger.info(f"Executing: {cmd} | Justification: {args.justification}")
-    
+
+    audit_entry = {
+        "timestamp": timestamp,
+        "command": cmd,
+        "justification": args.justification,
+        "status": None,
+        "stdout": None,
+        "stderr": None,
+    }
+
     try:
-        # Run the command
-        # For safety in this demo, you could append `--dry-run` to certain commands, or just run it natively.
-        # We will use subprocess.run with capture_output
         result = subprocess.run(
             cmd,
             shell=True,
@@ -40,7 +64,14 @@ def run_gcloud(args: GcloudCommandArgs) -> str:
             text=True
         )
         logger.info("Command executed successfully.")
-        return f"SUCCESS\\n\\ntdo_stdout:\\n{result.stdout}"
+        audit_entry["status"] = "SUCCESS"
+        audit_entry["stdout"] = result.stdout
+        _write_audit_entry(audit_entry)
+        return f"SUCCESS\n\nstdout:\n{result.stdout}"
     except subprocess.CalledProcessError as e:
         logger.error(f"Command failed: {e.stderr}")
-        return f"FAILED\\n\\nstderr:\\n{e.stderr}\\n\\nstdout:\\n{e.stdout}"
+        audit_entry["status"] = "FAILED"
+        audit_entry["stdout"] = e.stdout
+        audit_entry["stderr"] = e.stderr
+        _write_audit_entry(audit_entry)
+        return f"FAILED\n\nstderr:\n{e.stderr}\n\nstdout:\n{e.stdout}"

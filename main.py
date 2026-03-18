@@ -1,7 +1,9 @@
 import asyncio
 import os
 import sys
+import json
 import argparse
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from google.adk import Agent, Runner
@@ -17,7 +19,32 @@ from tools import run_gcloud, GcloudCommandArgs
 # Load environment variables from .env file
 load_dotenv()
 
+AUDIT_LOG_DIR = "audit_logs"
+
+def _get_dated_log_path(filename: str) -> str:
+    """Returns audit_logs/YYYY-MM-DD/<filename> for today's date (UTC)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day_dir = os.path.join(AUDIT_LOG_DIR, today)
+    os.makedirs(day_dir, exist_ok=True)
+    return os.path.join(day_dir, filename)
+
+def _write_audit_summary(data: dict):
+    """Append the full pipeline run record to audit_logs/YYYY-MM-DD/audit_summary.log."""
+    path = _get_dated_log_path("audit_summary.log")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(data) + "\n")
+    print(f"\n[+] Audit summary appended → {path}")
+
 async def run_provisioning_flow(user_request: str):
+    run_ts = datetime.now(timezone.utc).isoformat()
+    audit = {
+        "run_timestamp": run_ts,
+        "request": user_request,
+        "plan": None,
+        "governance_status": None,
+        "governance_response": None,
+        "execution_result": None,
+    }
     
     # Use native ADK McpToolset wrapping instead of older mcp class
     server_params = StdioConnectionParams(
@@ -74,10 +101,13 @@ async def run_provisioning_flow(user_request: str):
                 if part.text:
                     plan_text += part.text
             
-    print(f"\\n=== PLAN ===\\n{plan_text}\\n===========\\n")
+    print(f"\n=== PLAN ===\n{plan_text}\n===========\n")
+    audit["plan"] = plan_text
 
     if not plan_text.strip():
-        print("[-] Error: The Infrastructure Planner did not return a valid plan. This may happen if the resource was not found or the request was ambiguous.")
+        print("[-] Error: The Infrastructure Planner did not return a valid plan.")
+        audit["governance_status"] = "ERROR_NO_PLAN"
+        _write_audit_summary(audit)
         return
 
     # Step 2
@@ -100,15 +130,22 @@ async def run_provisioning_flow(user_request: str):
                 if part.text:
                     validation_text += part.text
             
-    print(f"\\n=== VALIDATION ===\\n{validation_text}\\n==================\\n")
+    print(f"\n=== VALIDATION ===\n{validation_text}\n==================\n")
+    audit["governance_response"] = validation_text
 
     if "REJECTED" in validation_text:
         print("[-] Governance rejected the plan. Aborting execution.")
+        audit["governance_status"] = "REJECTED"
+        _write_audit_summary(audit)
         return
 
     if "APPROVED" not in validation_text:
         print("[-] Governance response was ambiguous. Aborting execution for safety.")
+        audit["governance_status"] = "AMBIGUOUS"
+        _write_audit_summary(audit)
         return
+
+    audit["governance_status"] = "APPROVED"
 
     # Step 3
     print("[+] Step 3: Command Execution...")
@@ -130,7 +167,10 @@ async def run_provisioning_flow(user_request: str):
                 if part.text:
                     exec_text += part.text
             
-    print(f"\\n=== EXECUTION RESULT ===\\n{exec_text}\\n========================\\n")
+    print(f"\n=== EXECUTION RESULT ===\n{exec_text}\n========================\n")
+    audit["execution_result"] = exec_text
+    _write_audit_summary(audit)
+
 
 
 if __name__ == "__main__":

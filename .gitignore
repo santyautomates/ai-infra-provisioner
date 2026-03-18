@@ -22,4 +22,5 @@ Thumbs.db
 
 # Project specific
 generated_artifacts/
+audit_logs/
 *.log

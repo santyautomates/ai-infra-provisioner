@@ -33,16 +33,41 @@ jobs:
       - name: Set up gcloud
         uses: 'google-github-actions/setup-gcloud@v2'
 
+      # Download the existing cumulative audit artifact so we can append to it.
+      # continue-on-error: true handles the first-ever run where no artifact exists yet.
+      - name: Restore Previous Audit Logs
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: audit-logs
+          path: audit_logs/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
       - name: Run Provisioner
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          # The provisioner expects to be able to run gcloud commands.
-          # The auth step above handles the authentication for gcloud.
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           python main.py --request "${{ github.event.inputs.request }}"
 
       - name: Upload Generated Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: infrastructure-artifacts
           path: generated_artifacts/
+          if-no-files-found: warn
+          overwrite: true
+
+      # Single audit artifact — named 'audit-logs' (no run_id suffix).
+      # Overwrite: true means each run replaces the artifact but now contains
+      # ALL previous days' sub-folders (YYYY-MM-DD/) because we restored them above.
+      - name: Upload Cumulative Audit Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-logs
+          path: audit_logs/
+          if-no-files-found: warn
+          overwrite: true
