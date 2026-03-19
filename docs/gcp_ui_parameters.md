@@ -9,7 +9,7 @@
 
 | Policy | Allowed Values |
 |---|---|
-| **Regions** | `us-central1`, `europe-west1`, `asia-northeast1` |
+| **Regions** | `us-central1`, `us-east1`, `us-west1`, `europe-west1`, `europe-west4`, `asia-northeast1`, `asia-southeast1` |
 | **Environments** | `dev`, `stag`, `prod` |
 | **Naming Pattern** | `proj-[env]-[service]-[resource_type]` |
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | Instance Name | Pattern above | `proj-dev-payment-vm` |
 | Zone | Must be in allowed region | `us-central1-a` |
-| Machine Type | `e2-micro`, `e2-small`, `e2-medium`, `n1-standard-1` | `e2-medium` |
+| Machine Type | `e2-micro`, `e2-small`, `e2-medium`, `n1-standard-1/2/4`, `n2-standard-2` *(Tiered by Env)* | `e2-medium` |
 | Image Family | `debian-11` only | `--image-family=debian-11` |
 | Image Project | `debian-cloud` only | `--image-project=debian-cloud` |
 | Public IP | **Not allowed** (`allow_public_ip: false`) | Must use `--no-address` |
@@ -240,8 +240,8 @@ Any other platform (Jenkins, CircleCI, etc.) will not be validated by the govern
 
 | Mistake | Example | Fix |
 |---|---|---|
-| Wrong region | `asia-south1` | Use `us-central1`, `europe-west1`, or `asia-northeast1` |
-| Wrong machine type | `e2-highmem-16` | Use `e2-micro`, `e2-small`, `e2-medium`, or `n1-standard-1` |
+| Wrong region | `asia-south1` | Use `us-central1`, `us-east1`, `us-west1`, `europe-west1`, `europe-west4`, `asia-northeast1`, or `asia-southeast1` |
+| Wrong machine type | `e2-highmem-16` | Use allowed sizes tightly coupled to the Environment (e.g. `dev` = `e2-micro/small/medium`) |
 | Wrong SQL tier | `db-n1-standard-2` | Use `db-f1-micro`, `db-g1-small`, or `db-custom-1-3840` |
 | Missing `--no-address` on VM | `gcloud compute instances create ...` | Always add `--no-address` |
 | Bad naming | `payment-vm-dev` | Must be `proj-dev-payment-vm` |

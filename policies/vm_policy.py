@@ -56,13 +56,21 @@ VM_POLICY = {
     #
     "allowed_regions": [
         "us-central1",
+        "us-east1",
+        "us-west1",
         "europe-west1",
+        "europe-west4",
         "asia-northeast1",
+        "asia-southeast1"
     ],
     "allowed_zones": [
         "us-central1-a", "us-central1-b", "us-central1-c",
+        "us-east1-b", "us-east1-c", "us-east1-d",
+        "us-west1-a", "us-west1-b", "us-west1-c",
         "europe-west1-b", "europe-west1-c",
+        "europe-west4-a", "europe-west4-b", "europe-west4-c",
         "asia-northeast1-a", "asia-northeast1-b",
+        "asia-southeast1-a", "asia-southeast1-b", "asia-southeast1-c"
     ],
 
     #
@@ -187,7 +195,7 @@ VM_POLICY = {
         },
         {
             "reason": "Region not in allowed list",
-            "fix": "Use us-central1, europe-west1, or asia-northeast1.",
+            "fix": "Use us-central1, us-east1, us-west1, europe-west1, europe-west4, asia-northeast1, or asia-southeast1.",
         },
         {
             "reason": "Image family not approved (e.g. windows-server)",
