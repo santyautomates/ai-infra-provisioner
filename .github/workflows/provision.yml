@@ -80,14 +80,8 @@ jobs:
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
           INSTANCE_INDEX: ${{ matrix.index }}
           INSTANCE_COUNT: ${{ github.event.inputs.count }}
-      - name: Run Provisioner (Instance ${{ matrix.index }})
-        env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
-          INSTANCE_INDEX: ${{ matrix.index }}
-          INSTANCE_COUNT: ${{ github.event.inputs.count }}
         run: |
-          mkdir -p generated_artifacts/   # Ensure directory exists to avoid upload warnings
+          mkdir -p generated_artifacts/
           python main.py \
             --request "${{ github.event.inputs.request }}" \
             --index ${{ matrix.index }} \
