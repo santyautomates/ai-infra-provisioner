@@ -173,7 +173,7 @@ with st.container():
     with tab_devops:
         devops_feature = st.selectbox("Select DevOps Activity", ["Select a Feature", "Create CI/CD Pipeline", "Create Kubernetes Configuration", "Create Dockerfile", "Create Bash Script"], key="devops_feat", on_change=reset_other_features, args=("devops_feat",))
     with tab_agentic:
-        agentic_feature = st.selectbox("Select Agentic Service", ["Select a Feature", "Agentic Development", "Create Dockerfile"], key="agentic_feat", on_change=reset_other_features, args=("agentic_feat",))
+        agentic_feature = st.selectbox("Select Agentic Service", ["Select a Feature", "Agentic Development", "Create Dockerfile", "Create CI/CD Pipeline", "Create Kubernetes Configuration", "Create Bash Script"], key="agentic_feat", on_change=reset_other_features, args=("agentic_feat",))
     with tab_utils:
         utils_feature = st.selectbox("Select Utilities", ["Select a Feature", "Cloudflare Configuration", "Developer Configuration"], key="utils_feat", on_change=reset_other_features, args=("utils_feat",))
 
