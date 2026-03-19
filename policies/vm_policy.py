@@ -24,19 +24,26 @@ VM_POLICY = {
     # ── NAMING ────────────────────────────────────────────────────────────────
     #
     "naming": {
-        "convention": "proj-[env]-[service]-vm",
-        "pattern_regex": r"^proj-(dev|stag|prod)-[a-z0-9\-]+-vm$",
+        "convention": "proj-[env]-[service]-vm (or proj-[env]-[service]-vm-[N] for parallel provisioning)",
+        "pattern_regex": r"^proj-(dev|stag|prod)-[a-z0-9\-]+-vm(-\d+)?$",
         "max_length": 63,
         "examples": {
-            "dev":  "proj-dev-payments-vm",
-            "stag": "proj-stag-inventory-vm",
-            "prod": "proj-prod-api-vm",
+            "dev":               "proj-dev-payments-vm",
+            "dev_parallel":     "proj-dev-payments-vm-1, proj-dev-payments-vm-2",
+            "stag":             "proj-stag-inventory-vm",
+            "prod":             "proj-prod-api-vm",
         },
         "rejection_examples": [
-            "python-app-vm   → REJECTED: missing 'proj-[env]-' prefix",
-            "proj-dev-VM     → REJECTED: uppercase letters not allowed",
-            "vm-dev-payments → REJECTED: wrong prefix order",
+            "python-app-vm               → REJECTED: missing 'proj-[env]-' prefix",
+            "proj-dev-VM                 → REJECTED: uppercase letters not allowed",
+            "vm-dev-payments             → REJECTED: wrong prefix order",
+            "proj-dev-payments-vm-abc    → REJECTED: suffix must be numeric only",
         ],
+        "parallel_suffix_note": (
+            "When INSTANCE_COUNT > 1, the system automatically appends a numeric suffix "
+            "(e.g. -1, -2) to make resource names unique across parallel runs. "
+            "APPROVE names ending in -vm-<number>. Do NOT reject them."
+        ),
     },
 
     #
@@ -172,7 +179,7 @@ VM_POLICY = {
         },
         {
             "reason": "Instance name does not match proj-[env]-[service]-vm pattern",
-            "fix": "Rename to e.g. proj-dev-payments-vm.",
+            "fix": "Rename to e.g. proj-dev-payments-vm. Note: proj-dev-payments-vm-1 is APPROVED for parallel provisioning runs.",
         },
         {
             "reason": "Machine type not in allowed list",
