@@ -9,9 +9,15 @@
 
 | Policy | Allowed Values |
 |---|---|
-| **Regions** | `us-central1`, `us-east1`, `us-west1`, `europe-west1`, `europe-west4`, `asia-northeast1`, `asia-southeast1` |
+| **Regions** | `us-east1` (Strictly Enforced) |
 | **Environments** | `dev`, `stag`, `prod` |
 | **Naming Pattern** | `proj-[env]-[service]-[resource_type]` |
+
+> ⚠️ **DEMO SCRIPT - GOVERNANCE HARD BLOCKS:** 
+> We have purposefully restricted the MCP Policy to ONLY allow `us-east1` to pass Governance.
+> 
+> **To PASS (Green Status):** Select `us-east1`.
+> **To FAIL (Red Rejection):** Select `us-central1` or ANY other region in the UI dropdown. The Governance Agent will intercept the AI plan and trigger a hard policy rejection!
 
 ---
 
@@ -23,7 +29,14 @@
 |---|---|---|
 | Instance Name | Pattern above | `proj-dev-payment-vm` |
 | Zone | Must be in allowed region | `us-central1-a` |
-| Machine Type | `e2-micro`, `e2-small`, `e2-medium`, `n1-standard-1/2/4`, `n2-standard-2` *(Tiered by Env)* | `e2-medium` |
+| Machine Type | **Strictly Tiered by Environment (See Below)** | `e2-medium` |
+
+**Environment-Based Machine Type Enforcements:**
+| Environment Choice | Allowed Machine Types |
+|---|---|
+| `dev` | `e2-micro`, `e2-small`, `e2-medium` |
+| `stag` | `e2-medium`, `n1-standard-1`, `n1-standard-2` |
+| `prod` | `n1-standard-1`, `n1-standard-2`, `n1-standard-4`, `n2-standard-2` |
 | Image Family | `debian-11` only | `--image-family=debian-11` |
 | Image Project | `debian-cloud` only | `--image-project=debian-cloud` |
 | Public IP | **Not allowed** (`allow_public_ip: false`) | Must use `--no-address` |
@@ -240,7 +253,8 @@ Any other platform (Jenkins, CircleCI, etc.) will not be validated by the govern
 
 | Mistake | Example | Fix |
 |---|---|---|
-| Wrong region | `asia-south1` | Use `us-central1`, `us-east1`, `us-west1`, `europe-west1`, `europe-west4`, `asia-northeast1`, or `asia-southeast1` |
+| Wrong region | `us-central1` | Strict Policy Enforcement: You must use `us-east1`. |
+| Execution Failed (Capacity) | `ZONE_RESOURCE_POOL_EXHAUSTED` | This happens on `e2-micro` instances during peak times. |
 | Wrong machine type | `e2-highmem-16` | Use allowed sizes tightly coupled to the Environment (e.g. `dev` = `e2-micro/small/medium`) |
 | Wrong SQL tier | `db-n1-standard-2` | Use `db-f1-micro`, `db-g1-small`, or `db-custom-1-3840` |
 | Missing `--no-address` on VM | `gcloud compute instances create ...` | Always add `--no-address` |

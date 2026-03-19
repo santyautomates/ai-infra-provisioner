@@ -24,7 +24,7 @@ mcp = FastMCP("infra-governance-mcp")
 # ─ As each service gets its own policy module, its entries will be removed from here too.
 POLICIES = {
     # Regions apply globally across all GCP services
-    "allowed_regions": ["us-central1", "us-east1", "us-west1", "europe-west1", "europe-west4", "asia-northeast1", "asia-southeast1"],
+    "allowed_regions": ["us-east1"],
 
     # SQL tiers — will be moved to policies/sql_policy.py in a future iteration
     "allowed_sql_tiers": ["db-f1-micro", "db-g1-small", "db-custom-1-3840"],
