@@ -256,7 +256,10 @@ if __name__ == "__main__":
             # Belt-and-suspenders instruction for the LLM
             request_text += (
                 f"\n\n[SYSTEM] This is parallel instance {idx} of {args.count}. "
-                f"All resource names MUST carry the '-{idx}' suffix already injected above."
+                f"All resource names MUST carry the '-{idx}' suffix already injected above. "
+                f"CRITICAL: Generate gcloud/cloud CLI commands for EXACTLY ONE resource (this instance only). "
+                f"Do NOT generate commands for multiple resources or loop over the count — "
+                f"the other {args.count - 1} instance(s) are handled by separate parallel jobs."
             )
             return request_text
 
