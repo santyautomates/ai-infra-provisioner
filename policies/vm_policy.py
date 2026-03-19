@@ -144,8 +144,8 @@ VM_POLICY = {
     #
     "gcloud_template": (
         "gcloud compute instances create proj-[env]-[service]-vm \\\n"
-        "  --project=[PROJECT_ID] \\\n"
-        "  --zone=[ZONE] \\\n"
+        "  --project=gen-lang-client-0436480880 \\\n"
+        "  --zone=us-east1-d \\\n"  # us-east1-d confirmed available; us-east1-b and us-central1 are exhausted
         "  --machine-type=[MACHINE_TYPE] \\\n"
         "  --image-family=debian-11 \\\n"
         "  --image-project=debian-cloud \\\n"
