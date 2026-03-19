@@ -288,9 +288,10 @@ with st.container():
             additional_input = f"App Name: {app_name}\nApp Description: {app_description}\nBounded Contexts: {bounded_contexts}\nTechnologies: {technologies}"
 
     elif feature == "Create Dockerfile":
-        base_image = st.text_input("Base Image", "python:3.8-slim")
-        packages = st.text_input("Packages to install (comma separated)", "numpy, pandas")
-        additional_input = f"Base Image: {base_image}\nPackages: {packages}"
+        base_image = st.text_input("Base Image", "python:3.11-slim")
+        packages = st.text_input("Packages to Install", placeholder="e.g., build-essential")
+        commands = st.text_area("Commands to Run", placeholder="e.g., pip install -r requirements.txt")
+        additional_input = f"Base Image: {base_image}\nPackages: {packages}\nCommands: {commands}"
     elif feature == "Create Bash Script":
         script_purpose = st.text_input("Script Purpose", "Deployment script")
         commands = st.text_area("Commands to include", "echo Hello World")
