@@ -13,7 +13,7 @@ def get_governance_agent(mcp_toolset):
             "   - TYPE A: GCP infrastructure plan (contains `gcloud` commands)\\n"
             "   - TYPE B: DevOps artifact plan (generates files: Dockerfile, K8s YAML, CI/CD pipeline, Bash script, AWS CLI, Azure CLI, Firebase CLI, Terraform, etc.)\\n\\n"
             "3. FOR TYPE A (GCP Plans), validate ALL of the following:\\n"
-            "   - **API Activation**: Confirm `gcloud services enable` is the first step.\\n"
+            "   - **API Activation**: If the plan includes `gcloud services enable`, confirm it is the first step. If the plan OMITS the enable step (because another parallel instance or a prior run already activated them), that is ACCEPTABLE — do NOT reject for a missing enable step.\\n"
             "   - **Naming**: Each GCP resource name MUST match its specific entry in `naming_conventions`. Use the EXACT matching key (e.g., `artifact_registry` → `proj-[env]-[service]-repo`, `cloud_function` → `proj-[env]-[service]-fn`, `secret` → `proj-[env]-[service]-secret`, `bigquery_dataset` → `proj_[env]_[service]_dataset`, `iam_sa` → `proj-[env]-[service]-sa`). Only use `default_fallback` if no specific key exists. CRITICAL: names ending with a numeric suffix like `proj-dev-payments-vm-1` or `proj-dev-payments-vm-2` are VALID and APPROVED — the system appends these automatically for parallel provisioning runs. Do NOT reject a name solely because it has a trailing `-<number>` after the resource type.\\n"
             "   - **Regions**: All `--region` or `--zone` flags must be in `allowed_regions`.\\n"
             "   - **Machine Types**: VMs and GKE nodes must use `allowed_machine_types`.\\n"
