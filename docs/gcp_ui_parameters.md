@@ -9,7 +9,7 @@
 
 | Policy | Allowed Values |
 |---|---|
-| **Regions** | `us-east1` (Strictly Enforced) |
+| **Regions (All Services)** | `us-central1`, `us-east1` |
 | **Environments** | `dev`, `stag`, `prod` |
 | **Naming Pattern** | `proj-[env]-[service]-[resource_type]` |
 
@@ -20,6 +20,52 @@
 > **To FAIL (Red Rejection):** Select `us-central1` or ANY other region in the UI dropdown. The Governance Agent will intercept the AI plan and trigger a hard policy rejection!
 
 ---
+
+## 📊 Per-Environment Zone & Region Matrix
+
+### 🖥️ Compute Engine (VM) — from `policies/vm_policy.py`
+
+Machine types are **strictly locked per environment**. Zones must fall within the allowed regions.
+
+| Environment | Allowed Machine Types | Allowed Zones |
+|---|---|---|
+| `dev` | `e2-micro`, `e2-small`, `e2-medium` | `us-central1-a/b/c`, `us-east1-b/c/d` |
+| `stag` | `e2-medium`, `n1-standard-1`, `n1-standard-2` | `us-central1-a/b/c`, `us-east1-b/c/d` |
+| `prod` | `n1-standard-1`, `n1-standard-2`, `n1-standard-4`, `n2-standard-2` | `us-central1-a/b/c`, `us-east1-b/c/d` |
+
+### ☁️ Cloud Run — from `mcp_server.py`
+
+| Environment | Container Images | Region |
+|---|---|---|
+| `dev` | `python:3.11-slim`, `node:18-alpine`, `gcr.io/google-samples/hello-app:1.0` | `us-central1`, `us-east1` |
+| `stag` | Same as dev | `us-central1`, `us-east1` |
+| `prod` | Same as dev | `us-central1`, `us-east1` |
+
+> Auth policy: `allow_unauthenticated_cloudrun: true` (all envs)
+
+### 🗄️ Cloud SQL — from `mcp_server.py`
+
+| Environment | Allowed Tiers | Region |
+|---|---|---|
+| `dev` | `db-f1-micro` | `us-central1`, `us-east1` |
+| `stag` | `db-g1-small` | `us-central1`, `us-east1` |
+| `prod` | `db-custom-1-3840` | `us-central1`, `us-east1` |
+
+### ☸️ GKE, 🪣 GCS, 📡 Pub/Sub, 🔴 Memorystore, 🌐 VPC
+
+All other services share the **global region policy** and do **not** have environment-specific zone restrictions:
+
+| Service | Allowed Regions (All Envs) |
+|---|---|
+| GKE | `us-central1`, `us-east1` |
+| Cloud Storage | `us-central1`, `us-east1` |
+| Pub/Sub | Global (no region required) |
+| Memorystore (Redis) | `us-central1`, `us-east1` |
+| VPC / Subnets | `us-central1`, `us-east1` |
+| Artifact Registry | `us-central1`, `us-east1` |
+| Cloud Functions | `us-central1`, `us-east1` |
+| BigQuery | `us-central1`, `us-east1` (dataset level) |
+| Vertex AI | `us-central1`, `us-east1` |
 
 ## 🖥️ Compute Engine (VM)
 
