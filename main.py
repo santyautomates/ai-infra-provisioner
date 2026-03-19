@@ -20,6 +20,7 @@ from tools import run_gcloud, GcloudCommandArgs
 load_dotenv()
 
 AUDIT_LOG_DIR = "audit_logs"
+ARTIFACT_DIR = "generated_artifacts"
 
 def _get_dated_log_path(filename: str) -> str:
     """Returns audit_logs/YYYY-MM-DD/<filename> for today's date (UTC)."""
@@ -34,6 +35,40 @@ def _write_audit_summary(data: dict):
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(data) + "\n")
     print(f"\n[+] Audit summary appended → {path}")
+
+def _write_provision_artifact(audit: dict):
+    """Write a JSON + human-readable .txt artifact into generated_artifacts/ so GitHub
+    Actions always has files to upload regardless of request type."""
+    os.makedirs(ARTIFACT_DIR, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    idx = audit.get("instance_index", 1)
+    base = f"provision_{ts}_instance{idx}"
+
+    # JSON artifact (machine-readable)
+    json_path = os.path.join(ARTIFACT_DIR, f"{base}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(audit, f, indent=2)
+
+    # Human-readable report
+    txt_path = os.path.join(ARTIFACT_DIR, f"{base}_report.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("=" * 60 + "\n")
+        f.write("  ShieldInfra — DevSecOps AI Infra Provisioner\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"Timestamp : {audit.get('run_timestamp')}\n")
+        f.write(f"Instance  : {idx} of {audit.get('total_count', 1)}\n")
+        f.write(f"Status    : {audit.get('governance_status', 'UNKNOWN')}\n")
+        f.write("\n--- REQUEST ---\n")
+        f.write(str(audit.get("request", "")) + "\n")
+        f.write("\n--- PLAN ---\n")
+        f.write(str(audit.get("plan", "")) + "\n")
+        f.write("\n--- GOVERNANCE ---\n")
+        f.write(str(audit.get("governance_response", "")) + "\n")
+        f.write("\n--- EXECUTION RESULT ---\n")
+        f.write(str(audit.get("execution_result", "")) + "\n")
+
+    print(f"[+] Artifact saved → {json_path}")
+    print(f"[+] Report saved  → {txt_path}")
 
 async def run_provisioning_flow(user_request: str, instance_index: int = 1, total_count: int = 1):
     run_ts = datetime.now(timezone.utc).isoformat()
@@ -110,6 +145,7 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
         print("[-] Error: The Infrastructure Planner did not return a valid plan.")
         audit["governance_status"] = "ERROR_NO_PLAN"
         _write_audit_summary(audit)
+        _write_provision_artifact(audit)
         return
 
     # Step 2
@@ -139,12 +175,14 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
         print("[-] Governance rejected the plan. Aborting execution.")
         audit["governance_status"] = "REJECTED"
         _write_audit_summary(audit)
+        _write_provision_artifact(audit)
         return
 
     if "APPROVED" not in validation_text:
         print("[-] Governance response was ambiguous. Aborting execution for safety.")
         audit["governance_status"] = "AMBIGUOUS"
         _write_audit_summary(audit)
+        _write_provision_artifact(audit)
         return
 
     audit["governance_status"] = "APPROVED"
@@ -172,6 +210,7 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
     print(f"\n=== EXECUTION RESULT ===\n{exec_text}\n========================\n")
     audit["execution_result"] = exec_text
     _write_audit_summary(audit)
+    _write_provision_artifact(audit)
 
 
 
