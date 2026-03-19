@@ -6,7 +6,7 @@ on:
       request:
         description: 'Natural language infrastructure request (e.g. "Create a VM for payments service in dev in us-central1")'
         required: true
-        default: 'Create a VM in us-central1 for payments service in dev'
+        default: 'Create a VM in us-east1 for payments service in dev'
       count:
         description: 'Number of instances to provision in parallel (1–10)'
         required: false
