@@ -79,10 +79,10 @@ VM_POLICY = {
     # ── OS IMAGE ──────────────────────────────────────────────────────────────
     #
     "os_image": {
-        "required_family": "debian-11",
+        "required_family": "debian-12",
         "required_project": "debian-cloud",
-        "allowed_families": ["debian-11", "debian-12", "ubuntu-2204-lts"],
-        "gcloud_flag": "--image-family=debian-11 --image-project=debian-cloud",
+        "allowed_families": ["debian-12", "debian-12", "ubuntu-2204-lts"],
+        "gcloud_flag": "--image-family=debian-12 --image-project=debian-cloud",
         "rejection_reason": "Custom or Windows images are not approved.",
     },
 
@@ -147,7 +147,7 @@ VM_POLICY = {
         "  --project=gen-lang-client-0436480880 \\\n"
         "  --zone=us-east1-d \\\n"  # us-east1-d confirmed available; us-east1-b and us-central1 are exhausted
         "  --machine-type=[MACHINE_TYPE] \\\n"
-        "  --image-family=debian-11 \\\n"
+        "  --image-family=debian-12 \\\n"
         "  --image-project=debian-cloud \\\n"
         "  --boot-disk-size=50GB \\\n"
         "  --boot-disk-type=pd-balanced \\\n"
@@ -189,7 +189,7 @@ VM_POLICY = {
         },
         {
             "reason": "Image family not approved (e.g. windows-server)",
-            "fix": "Use --image-family=debian-11 --image-project=debian-cloud.",
+            "fix": "Use --image-family=debian-12 --image-project=debian-cloud.",
         },
         {
             "reason": "Missing required labels",
