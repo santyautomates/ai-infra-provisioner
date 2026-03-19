@@ -554,7 +554,7 @@ with st.container():
             size_choice = st.selectbox("Instance Size (T-Shirt)", list(t_shirt_map.keys()), index=2)
             machine_type = t_shirt_map[size_choice]
             
-            image = st.selectbox("Source Image", ["debian-11", "ubuntu-2204-lts", "rhel-9", "windows-server-2022-dc"])
+            image = st.selectbox("Source Image", ["debian-12", "ubuntu-2204-lts", "rhel-9", "windows-server-2022-dc"])
             instance_count = st.number_input(
                 "Number of Instances",
                 min_value=1, max_value=10, value=1, step=1,
@@ -771,7 +771,7 @@ with st.container():
             with col_b:
                 if feature == "GCP Configuration":
                     st.markdown("⚠️  VM will get `--no-address` (no public IP)")
-                    st.markdown("ℹ️  Image: `debian-11 / debian-cloud`")
+                    st.markdown("ℹ️  Image: `debian-12 / debian-cloud`")
                 st.markdown("ℹ️  Session ID: `{}`".format(st.session_state.session_uid))
 
     github_button = st.button("🚀 Deploy via GitHub Actions", type="primary", use_container_width=True, key="deploy_gh_btn")
