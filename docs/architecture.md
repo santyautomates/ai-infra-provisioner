@@ -1,19 +1,27 @@
-# AutoInfra — System Architecture & Configuration Guide
+# DevSecOps AI Infra Provisioner — System Architecture & Configuration Guide
 
-> **AutoInfra** is an AI-driven infrastructure provisioning platform that converts natural language requests into secure, compliant, and production-ready cloud infrastructure commands using an LLM-powered multi-agent pipeline.
+> **DevSecOps AI Infra Provisioner** is an AI-driven, security-first cloud infrastructure provisioning platform that converts natural language requests into secure, compliant, and production-ready cloud infrastructure via an automated GitHub Actions pipeline.
 
 ---
 
 ## 📐 System Architecture Overview
 
-The system follows a **3-Stage Agentic Pipeline** (`Think → Audit → Do`):
+The system follows a **3-Stage Agentic Pipeline** (`Think → Audit → Do`), triggered exclusively through GitHub Actions:
 
 ```
-User (Streamlit UI / CLI)
+User (Streamlit UI)
          │
          ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   AutoInfra (app.py / main.py)          │
+│          DevSecOps AI Infra Provisioner (app.py)        │
+│                                                         │
+│   GitHub PAT + Repo Config ──► GitHub REST API          │
+│   🚀 Deploy via GitHub Actions                          │
+└─────────────────────────────────────────────────────────┘
+         │
+         ▼  (workflow_dispatch)
+┌─────────────────────────────────────────────────────────┐
+│              GitHub Actions: provision.yml              │
 │                                                         │
 │  ┌────────────────┐  ┌──────────────┐  ┌────────────┐  │
 │  │Infrastructure  │─▶│  Governance  │─▶│ Executor   │  │
@@ -24,6 +32,7 @@ User (Streamlit UI / CLI)
 │  ┌──────────────────────────────────────────────────┐   │
 │  │         MCP Server (mcp_server.py)               │   │
 │  │  • get_organizational_policies                   │   │
+│  │  • get_vm_policies                               │   │
 │  │  • list_gcp_resources (10 types)                 │   │
 │  │  • write_devops_artifact                         │   │
 │  │  • execute_shell_command                         │   │
@@ -31,43 +40,18 @@ User (Streamlit UI / CLI)
 └─────────────────────────────────────────────────────────┘
          │                                    │
          ▼                                    ▼
-  GitHub Actions                    Google Cloud / AWS /
-  (Remote CI/CD)                    Azure / Firebase / etc.
+  Generated Artifacts                 Google Cloud / AWS / Azure
+  (uploaded to Actions tab)           (actual resource creation)
 ```
 
 ---
 
-## 🌐 Network Flow
+## 🌐 Execution Flow — GitHub Actions Only
 
-### Local Execution Path
-
-```
-[User] ──► [Streamlit UI] ──► [Planner Agent]
-                               │
-                               ├──MCP──► get_organizational_policies
-                               ├──MCP──► list_gcp_resources (if deletion)
-                               │
-                               ▼
-                      [Governance Agent]
-                               │
-                        ┌── TYPE A (GCP gcloud) ──────────────────────────┐
-                        │   Validate: regions, naming, machine types,      │
-                        │   SQL tiers, No Public IP, VM images             │
-                        └── TYPE B (DevOps artifacts / non-GCP) ──────────┘
-                            Validate: docker images, k8s fields, ci/cd platform
-                               │
-                        APPROVED ─────► [Executor Agent]
-                        REJECTED ─────► [UI Error displayed]
-                               │
-                               ├──► [tools.py: run_gcloud] ──► GCP API
-                               ├──► [MCP: write_devops_artifact] ──► ./generated_artifacts/
-                               └──► [MCP: execute_shell_command] ──► chmod / local ops
-```
-
-### GitHub Actions Execution Path
+> ⚠️ **DevSecOps Principle**: There is NO local execution path. All infrastructure changes are version-controlled, auditable, and executed through GitHub Actions.
 
 ```
-[User] ──► [Streamlit "Deploy via GitHub" Button]
+[User] ──► [Streamlit UI: "Deploy via GitHub Actions"]
                 │
                 ▼
   [GitHub REST API: POST /repos/{owner}/{repo}/actions/workflows/{id}/dispatches]
@@ -75,15 +59,28 @@ User (Streamlit UI / CLI)
                 ▼
   [GitHub Actions Runner: provision.yml]
                 │
-      ┌─────────┴──────────┐
-      ▼                    ▼
-  [Authenticate GCP]   [pip install -r requirements.txt]
-      │
-      ▼
-  [python main.py --request "..."]  ──► (same 3-agent pipeline)
-      │
-      ▼
-  [actions/upload-artifact@v4]  ──► Downloadable from Actions tab
+      ┌─────────┴──────────────────────┐
+      │   Parallel Matrix (N instances) │
+      │   (1 to 10 in parallel)        │
+      └─────────┬──────────────────────┘
+                │
+                ▼
+  [Authenticate GCP] + [pip install -r requirements.txt]
+                │
+                ▼
+  [python main.py --request "..." --index N --count N]
+                │
+                ▼  (3-agent pipeline)
+  ┌──────────────────────────────────┐
+  │  Step 1: Planner Agent           │ ──► Creates detailed gcloud/CLI plan
+  │  Step 2: Governance Validator    │ ──► APPROVED or REJECTED (policy check)
+  │  Step 3: Executor Agent          │ ──► Runs commands, writes artifacts
+  └──────────────────────────────────┘
+                │
+                ▼
+  [actions/upload-artifact@v4]
+  ├── infrastructure-artifacts-N    (generated_artifacts/*.json, *.txt, *.yaml)
+  └── audit-logs-instance-N        (audit_logs/YYYY-MM-DD/audit_summary.log)
 ```
 
 ---
@@ -92,30 +89,36 @@ User (Streamlit UI / CLI)
 
 | Feature Category | Tab | Validated By | Output |
 |---|---|---|---|
-| GCP (20 services) | ☁️ Cloud | Governance: Type A | `gcloud` commands |
-| AWS (8 service groups) | ☁️ Cloud | Governance: Type B | AWS CLI / CloudFormation |
-| Azure (8 service groups) | ☁️ Cloud | Governance: Type B | Azure CLI / ARM |
-| Firebase | ☁️ Cloud | Governance: Type B | Firebase CLI config |
-| Supabase / Cloudflare | ☁️ Cloud | Governance: Type B | CLI config |
-| CI/CD Pipelines (9 types) | 🚀 Pipeline | Governance: ci_cd_allowed_platforms | YAML file |
-| Kubernetes YAML | 🚀 Pipeline | Governance: kubernetes_requirements | K8s manifest |
-| Dockerfile | 🚀 Pipeline | Governance: docker_images | Dockerfile |
-| Bash Script | 🚀 Pipeline | Pre-approved | .sh + chmod +x |
-| Agentic App Design (10) | 🤖 Agentic | Pre-approved | Architecture + scaffolding |
-| Cloudflare, Dev Config | 🔧 Other | Pre-approved | Config files |
+| GCP (20+ services) | ☁️ Cloud Systems | Governance: Type A | `gcloud` commands |
+| AWS (8 service groups) | ☁️ Cloud Systems | Governance: Type B | AWS CloudFormation / CLI |
+| Azure (8 service groups) | ☁️ Cloud Systems | Governance: Type B | Azure ARM / CLI |
+| GitHub Actions CI/CD | 🚀 Pipeline & DevOps | Governance: ci_cd_allowed | YAML workflow |
+| Kubernetes YAML | 🚀 Pipeline & DevOps | Governance: kubernetes_requirements | K8s manifest |
+| Dockerfile | 🚀 Pipeline & DevOps | Governance: docker_images | Dockerfile |
+| Bash Script | 🚀 Pipeline & DevOps | Pre-approved | .sh + chmod +x |
+| Agentic App Design | 🤖 Agentic Apps | Pre-approved | Architecture + scaffolding |
 
 ---
 
 ## 🛡️ Governance Policy Engine
 
-### Plan Classification (New in Current Version)
+### Plan Classification
 
 | Type | What it is | Rules Applied |
 |---|---|---|
 | **Type A** | GCP `gcloud` commands | Region ✓, Naming ✓, Machine types ✓, SQL tiers ✓, No Public IP ✓ |
-| **Type B** | Everything else (CI/CD, Dockerfile, AWS, Azure, Firebase, scripts) | Docker base image ✓, K8s fields ✓, CI/CD platform allowlist ✓ |
+| **Type B** | DevOps artifacts (CI/CD, Dockerfile, AWS, Azure, scripts) | Docker base image ✓, K8s fields ✓, CI/CD platform allowlist ✓ |
 
-### Naming Conventions (31 Rules)
+### VM Naming Convention (with Parallel Support)
+
+| Scenario | Convention | Example |
+|---|---|---|
+| Single instance | `proj-[env]-[service]-vm` | `proj-dev-payments-vm` |
+| Parallel instances | `proj-[env]-[service]-vm-[N]` | `proj-dev-payments-vm-1` |
+
+> The system auto-injects the `-N` suffix when `INSTANCE_COUNT > 1`. Governance approves these names automatically.
+
+### Naming Conventions (All Resources)
 
 | Resource | Convention |
 |---|---|
@@ -131,21 +134,17 @@ User (Streamlit UI / CLI)
 | BigQuery Dataset | `proj_[env]_[service]_dataset` |
 | Vertex AI Endpoint | `proj-[env]-[service]-endpoint` |
 | IAM Service Account | `proj-[env]-[service]-sa` |
-| Cloud Build Trigger | `proj-[env]-[service]-trigger` |
-| Memorystore (Redis) | `proj-[env]-[service]-cache` |
-| Load Balancer | `proj-[env]-[service]-lb` |
 | Default (fallback) | `proj-[env]-[service]-[resource_name]` |
-| + 15 more... | See `mcp_server.py POLICIES` |
 
 ### Allowed Values
 
 | Policy | Values |
 |---|---|
 | Regions | `us-central1`, `europe-west1`, `asia-northeast1` |
-| Machine Types | `e2-micro`, `e2-small`, `e2-medium`, `n1-standard-1` |
+| VM Machine Types | `e2-micro`, `e2-small`, `e2-medium`, `n1-standard-1/2/4`, `n2-standard-2` |
 | SQL Tiers | `db-f1-micro`, `db-g1-small`, `db-custom-1-3840` |
 | Docker Base Images | 12 approved images (see `mcp_server.py`) |
-| CI/CD Platforms | 9 platforms (GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure Pipelines, AWS CodePipeline, GCB, Bitbucket, Travis CI) |
+| CI/CD Platform | GitHub Actions only (UI-enforced) |
 | Environments | `dev`, `stag`, `prod` |
 
 ---
@@ -156,9 +155,7 @@ User (Streamlit UI / CLI)
 |---|---|---|
 | `GOOGLE_API_KEY` | ✅ Yes | Gemini API key from [AI Studio](https://aistudio.google.com/) |
 | `GOOGLE_CLOUD_PROJECT` | ✅ Yes | GCP project ID |
-| `GOOGLE_CLOUD_LOCATION` | ✅ Yes | Default region (e.g. `us-central1`) |
-| `GOOGLE_GENAI_USE_VERTEXAI` | Optional | Set `true` to use Vertex AI API |
-| `GITHUB_PAT` | Optional | GitHub PAT with `workflow` scope for UI trigger |
+| `GITHUB_PAT` | ✅ Yes | GitHub PAT with `workflow` + `actions:read` scope |
 
 ---
 
@@ -167,62 +164,73 @@ User (Streamlit UI / CLI)
 ```
 ai-infra-provisioner/
 ├── .env                          # Local env vars (not committed)
-├── app.py                        # Streamlit UI (~1180 lines)
-├── main.py                       # CLI entrypoint for GitHub Actions
+├── app.py                        # Streamlit UI — DevSecOps AI Infra Provisioner
+├── main.py                       # CLI entrypoint for GitHub Actions runner
 ├── mcp_server.py                 # MCP policy server + tools
 ├── tools.py                      # run_gcloud tool wrapper
 ├── requirements.txt
 ├── agents/
-│   ├── planner/agent.py          # Multi-cloud Planner (all 11 feature types)
+│   ├── planner/agent.py          # Infrastructure Planner (GCP + DevOps artifacts)
 │   ├── governance/agent.py       # Type A/B classifier + policy validator
 │   └── executor/agent.py        # gcloud execution + artifact writer
+├── policies/
+│   └── vm_policy.py             # VM-specific governance rules
 ├── scripts/
-│   └── optimize_codebase.sh      # Housekeeping script (daily cron-safe)
-├── generated_artifacts/          # Output: scripts, YAMLs, Dockerfiles
+│   └── optimize_codebase.sh     # Housekeeping script
+├── generated_artifacts/         # Output: JSON reports, TXT reports, YAMLs
+├── audit_logs/                  # Daily audit trail (YYYY-MM-DD/audit_summary.log)
+├── backups/
+│   └── v4/                      # Pre-DevSecOps redesign backup
 ├── docs/
-│   ├── architecture.md           # This document
-│   ├── gcp_ui_parameters.md      # GCP service config reference
-│   ├── multi_cloud_ui_parameters.md # AWS/Azure/Firebase/DevOps reference
-│   ├── github_workflow_setup.md  # GitHub Secrets setup guide
-│   └── demo_guide.md             # Onboarding & demo scenarios
+│   ├── architecture.md          # This document
+│   ├── gcp_ui_parameters.md     # GCP service config reference
+│   ├── multi_cloud_ui_parameters.md # AWS/Azure/DevOps reference
+│   ├── github_workflow_setup.md # GitHub Secrets setup guide
+│   └── demo_guide.md            # Onboarding & demo scenarios
 └── .github/
     └── workflows/
-        └── provision.yml         # GitHub Actions provisioning workflow
+        └── provision.yml        # GitHub Actions: parallel provisioning workflow
 ```
 
 ---
 
-## 🔄 GitHub Actions CI/CD
+## 🔄 GitHub Actions CI/CD Workflow
 
-Workflow triggers via `workflow_dispatch`. Steps:
-1. Sets up Python 3.11 on `ubuntu-latest`
-2. Authenticates to GCP with `GCP_SA_KEY` secret
-3. Runs `python main.py --request "..."`
-4. Uploads `generated_artifacts/` as downloadable `infrastructure-artifacts`
+Workflow triggers via `workflow_dispatch`. Supports parallel provisioning:
+
+1. **Build Matrix** — Generates N parallel instances (1–10)
+2. **Each Instance**:
+   - Sets up Python 3.11 on `ubuntu-latest`
+   - Authenticates to GCP with `GCP_SA_KEY`
+   - Installs dependencies via `requirements.txt`
+   - Runs `python main.py --request "..." --index N --count N`
+   - Uploads `generated_artifacts/` and `audit_logs/` as downloadable artifacts
+3. **Merge Audit Logs** — Combines per-instance logs into a single cumulative `audit-logs` artifact
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|---|---|
+| `GCP_SA_KEY` | GCP Service Account JSON key (Compute Admin, Editor, or specific roles) |
+| `GOOGLE_API_KEY` | Gemini API key |
+| `GCP_PROJECT_ID` | Your GCP project ID |
 
 ---
 
-## 🧹 Housekeeping & Maintenance
+## 🧹 Housekeeping
 
-```bash
-# Daily cron (crontab -e)
-0 0 * * * /path/to/ai-infra-provisioner/scripts/optimize_codebase.sh
-```
-
-Cleans: `__pycache__/`, `.pyc`, `.DS_Store`, `generated_artifacts/` contents. Logs to `optimization.log`.
-
-Also available as the **🧺 Housekeeping** expander in the Streamlit sidebar.
+Available as the **🧺 Housekeeping** expander in the Streamlit sidebar. Cleans `__pycache__/`, `.pyc`, `.DS_Store`, and temp files.
 
 ---
 
-## 🆕 UI Optimizations (Current Version)
+## 🆕 UI Features (Current Version)
 
 | Feature | Description |
 |---|---|
+| DevSecOps Branding | Green/blue/indigo gradient — security-first identity |
+| GitHub-Only Deployment | No local execution — all changes go through GitHub Actions |
 | Unique Session IDs | `uuid4()` per session — no concurrent user collision |
-| 3-step Progress Bar | Real-time `⏳ Planning → ⏳ Governance → ⏳ Execution` |
-| Dry Run Toggle | Preview commands without deploying anything |
-| Pre-flight Checklist | Region/naming validation shown before submit |
+| Dry Run Toggle | Preview the request without triggering the workflow |
+| Pre-flight Checklist | Region/naming/service validation shown before submit |
 | Request History Panel | Last 5 requests with status in sidebar |
-| Copy-friendly Output | Execution results as `st.code(language="bash")` |
-| Collapsible Sidebar | GitHub, Housekeeping, History all collapsed by default |
+| Parallel Provisioning | Set 1–10 instances; each runs as a separate matrix job |
