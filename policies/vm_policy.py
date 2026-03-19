@@ -59,8 +59,8 @@ VM_POLICY = {
         "us-east1",
     ],
     "allowed_zones": [
+        "us-east1-d", "us-east1-c", "us-east1-b",
         "us-central1-a", "us-central1-b", "us-central1-c",
-        "us-east1-b", "us-east1-c", "us-east1-d",
     ],
 
     #
