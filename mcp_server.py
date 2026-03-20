@@ -227,6 +227,24 @@ def execute_shell_command(command: str) -> str:
     except Exception as e:
         return f"Exception: {str(e)}"
 
+
+@mcp.tool()
+def run_code(code: str, language: str = "bash") -> str:
+    """
+    STUB: This tool is intentionally disabled for security and governance reasons.
+    
+    If you are the Infrastructure Planner agent and called this tool:
+    - Do NOT use run_code. You are not a code execution agent.
+    - Your ONLY job is to produce a plain-text step-by-step plan with gcloud CLI commands.
+    - Use `execute_shell_command` if you need to run a gcloud command directly.
+    - Output your plan as a text response. Do NOT attempt to execute Python or shell code via run_code.
+    """
+    return (
+        "ERROR: run_code is disabled. Do not call this tool. "
+        "Output your infrastructure plan as plain text with gcloud CLI commands. "
+        "If you need to execute a shell command, use execute_shell_command instead."
+    )
+
 if __name__ == "__main__":
     # Start the FastMCP server when ran directly
     mcp.run()

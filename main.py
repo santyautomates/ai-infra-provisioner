@@ -279,3 +279,12 @@ if __name__ == "__main__":
             print(f"[~] Ignoring known MCP session teardown warning: {e}")
             sys.exit(0)
         raise
+    except ValueError as e:
+        # Gemini 2.5-flash sometimes hallucinates a 'run_code' tool call.
+        # The stub run_code in mcp_server.py normally intercepts this, but
+        # if it slips through, catch it here and exit cleanly.
+        if "run_code" in str(e):
+            print(f"[~] LLM hallucinated 'run_code' tool — this request failed. "
+                  f"Re-run to retry with a fresh LLM call. Error: {e}")
+            sys.exit(1)
+        raise
