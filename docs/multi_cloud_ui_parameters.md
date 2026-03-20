@@ -360,12 +360,27 @@ jobs:
 
 ### Create Dockerfile
 
-| Field | Example Value | Notes |
-|---|---|---|
-| Base Image | `python:3.11-slim` | Must be from approved list |
-| Packages | `flask, sqlalchemy` | Pip packages |
+The form has **3 fields**:
 
-**Approved base images:** `alpine`, `alpine:3.18`, `debian-slim`, `debian:12-slim`, `node:18-alpine`, `node:20-alpine`, `python:3.11-slim`, `python:3.10-slim`, `python:3.12-slim`, `nginx:alpine`, `openjdk:17-slim`, `gcr.io/google-samples/hello-app:1.0`
+| Field | Description | Demo Value |
+|---|---|---|
+| **Base Image** *(required)* | Container base — must be from approved list | `python:3.11-slim` |
+| **Packages to Install** *(optional)* | OS-level packages via `apt-get`/`apk` | `build-essential, curl` |
+| **Commands to Run** *(optional)* | Commands baked into the image as `RUN` steps | `pip install flask gunicorn` |
+
+**🎯 Demo script (Python Flask):**
+- Base Image: `python:3.11-slim`
+- Packages: `build-essential, curl`
+- Commands: `pip install flask gunicorn`
+
+**🎯 Demo script (Node.js):**
+- Base Image: `node:20-alpine`
+- Packages: `git`
+- Commands: `npm install && npm run build`
+
+**⛔ Policy Rejection demo:** Enter `ubuntu:22.04` as Base Image → Governance Agent blocks it.
+
+**Approved base images:** `alpine`, `alpine:3.18`, `debian-slim`, `debian:12-slim`, `node:18-alpine`, `node:20-alpine`, `python:3.10-slim`, `python:3.11-slim`, `python:3.12-slim`, `nginx:alpine`, `openjdk:17-slim`, `gcr.io/google-samples/hello-app:1.0`
 
 ---
 
