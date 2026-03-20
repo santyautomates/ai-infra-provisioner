@@ -112,37 +112,49 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
     
     session_service = InMemorySessionService()
 
-    # Step 1
+    # Step 1 — with retry for MCP mid-stream drop (anyio cancel scope race)
     print("\n[🛡️] Step 1: Shield Planning & Architecture...")
-    runner1 = Runner(
-        app_name="infra_provisioner",
-        agent=planner,
-        session_service=session_service,
-        auto_create_session=True,
-    )
-    # The default behavior of gemini-2.5-flash sometimes forces a run_code call
-    # instead of text generation when asked for commandline instructions.
-    runner1._config = types.GenerateContentConfig(
-        tools=[mcp_toolset],
-        temperature=0.0
-    )
-    
+
     plan_text = ""
-    async for event in runner1.run_async(
-        user_id="user1", 
-        session_id="session1", 
-        new_message=types.Content(parts=[types.Part.from_text(text=f"User Request: {user_request}")])
-    ):
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                if part.text:
-                    plan_text += part.text
-            
+    max_plan_attempts = 3
+    for attempt in range(1, max_plan_attempts + 1):
+        if attempt > 1:
+            import time
+            wait_s = attempt * 10
+            print(f"[~] Planner returned empty plan (attempt {attempt - 1}). Retrying in {wait_s}s...")
+            time.sleep(wait_s)
+
+        runner1 = Runner(
+            app_name="infra_provisioner",
+            agent=planner,
+            session_service=session_service,
+            auto_create_session=True,
+        )
+        # Prevent gemini-2.5-flash from hallucinating a run_code call.
+        runner1._config = types.GenerateContentConfig(
+            tools=[mcp_toolset],
+            temperature=0.0
+        )
+
+        plan_text = ""
+        async for event in runner1.run_async(
+            user_id="user1",
+            session_id=f"session1_attempt{attempt}",
+            new_message=types.Content(parts=[types.Part.from_text(text=f"User Request: {user_request}")])
+        ):
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if part.text:
+                        plan_text += part.text
+
+        if plan_text.strip():
+            break  # Got a valid plan — proceed
+
     print(f"\n=== PLAN ===\n{plan_text}\n===========\n")
     audit["plan"] = plan_text
 
     if not plan_text.strip():
-        print("[-] Error: The Infrastructure Planner did not return a valid plan.")
+        print(f"[-] Error: The Infrastructure Planner did not return a valid plan after {max_plan_attempts} attempts.")
         audit["governance_status"] = "ERROR_NO_PLAN"
         _write_audit_summary(audit)
         _write_provision_artifact(audit)
