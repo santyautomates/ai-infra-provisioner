@@ -76,8 +76,8 @@ jobs:
 
       - name: Stagger startup (avoid API rate limits)
         run: |
-          DELAY=$(( (${{ matrix.index }} - 1) * 30 ))
-          echo "Instance ${{ matrix.index }}: sleeping ${DELAY}s before starting..."
+          DELAY=$(( 15 + (${{ matrix.index }} - 1) * 30 ))
+          echo "Instance ${{ matrix.index }}: sleeping ${DELAY}s before starting (MCP warmup + rate limit buffer)..."
           sleep $DELAY
 
       - name: Run Provisioner (Instance ${{ matrix.index }})
