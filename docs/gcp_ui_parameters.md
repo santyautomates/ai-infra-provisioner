@@ -83,18 +83,22 @@ All other services share the **global region policy** and do **not** have enviro
 | `dev` | `e2-micro`, `e2-small`, `e2-medium` |
 | `stag` | `e2-medium`, `n1-standard-1`, `n1-standard-2` |
 | `prod` | `n1-standard-1`, `n1-standard-2`, `n1-standard-4`, `n2-standard-2` |
-| Image Family | `debian-11` only | `--image-family=debian-11` |
+| Image Family | `debian-12` only | `--image-family=debian-12` |
 | Image Project | `debian-cloud` only | `--image-project=debian-cloud` |
 | Public IP | **Not allowed** (`allow_public_ip: false`) | Must use `--no-address` |
 
-**Valid gcloud command example:**
+**Valid gcloud command example (confirmed working ✅):**
 ```bash
-gcloud compute instances create proj-dev-payment-vm \
-  --zone=us-central1-a \
-  --machine-type=e2-medium \
-  --image-family=debian-11 \
+gcloud compute instances create proj-dev-payment-vm-1 \
+  --project=gen-lang-client-0436480880 \
+  --zone=us-east1-d \
+  --machine-type=e2-small \
+  --image-family=debian-12 \
   --image-project=debian-cloud \
-  --no-address
+  --boot-disk-size=10GB \
+  --boot-disk-type=pd-standard \
+  --no-address \
+  --labels=env=dev,service=payment,managed-by=shieldinfra
 ```
 
 ---
@@ -300,9 +304,36 @@ Any other platform (Jenkins, CircleCI, etc.) will not be validated by the govern
 | Mistake | Example | Fix |
 |---|---|---|
 | Wrong region | `us-central1` | Strict Policy Enforcement: You must use `us-east1`. |
-| Execution Failed (Capacity) | `ZONE_RESOURCE_POOL_EXHAUSTED` | This happens on `e2-micro` instances during peak times. |
+| Execution Failed (Capacity) | `ZONE_RESOURCE_POOL_EXHAUSTED` | Use `us-east1-d` with `e2-small` — confirmed stable zone. |
 | Wrong machine type | `e2-highmem-16` | Use allowed sizes tightly coupled to the Environment (e.g. `dev` = `e2-micro/small/medium`) |
 | Wrong SQL tier | `db-n1-standard-2` | Use `db-f1-micro`, `db-g1-small`, or `db-custom-1-3840` |
 | Missing `--no-address` on VM | `gcloud compute instances create ...` | Always add `--no-address` |
-| Bad naming | `payment-vm-dev` | Must be `proj-dev-payment-vm` |
+| Bad naming (with space) | `proj-dev-payment -vm` | Must be `proj-dev-payment-vm` (no spaces) |
 | Unapproved Docker base | `FROM ubuntu:22.04` | Use `FROM debian-slim` or other approved images |
+| Retired image | `--image-family=debian-11` | `debian-11` is retired — use `debian-12` |
+
+---
+
+## 🔧 Troubleshooting — Known Issues & Fixes
+
+### Parallel Provisioning (3-Instance Matrix)
+
+When running the GitHub Actions parallel matrix for 3 instances, the following issues have been debugged and resolved:
+
+| Issue | Symptom | Fix Applied |
+|---|---|---|
+| **Gemini hallucinates `run_code` tool** | `ValueError: Tool 'run_code' not found` — crashes during Planner step | Added stub `run_code` tool in `mcp_server.py` that redirects the LLM to output as plain text |
+| **anyio cancel scope crash** | `RuntimeError: Attempted to exit cancel scope in a different task` | Happens during MCP session teardown (after work completes). Suppressed via `try/except` in `main.py` |
+| **Incomplete plan rejected by Governance** | `REJECTED: The plan only includes API enablement but not the VM creation command` | Added `COMPLETENESS — CRITICAL` rule to Planner agent prompt |
+| **Instance 1 failing at 0s delay** | Planner tool calls fail immediately at startup | Changed stagger formula from `(idx-1)*30` to `15 + (idx-1)*30` so Instance 1 waits 15s for MCP warmup |
+| **Zone capacity exhausted** | `ZONE_RESOURCE_POOL_EXHAUSTED` for `e2-medium` | Switched to `us-east1-d` with `e2-small` — stable and confirmed working |
+
+### Recommended Parallel Run Settings (✅ Confirmed Working)
+
+| Field | Value |
+|---|---|
+| **Zone** | `us-east1-d` |
+| **Machine Type** | `e2-small` (dev) or `e2-micro` (demo) |
+| **Image** | `debian-12` / `debian-cloud` |
+| **Stagger Delay** | `15 + (instance_index - 1) * 30` seconds |
+| **Naming** | `proj-[env]-[service]-vm-[N]` (suffix auto-injected by `main.py`) |
