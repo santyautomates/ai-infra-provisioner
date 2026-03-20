@@ -268,4 +268,14 @@ if __name__ == "__main__":
     else:
         req = base_request
 
-    asyncio.run(run_provisioning_flow(req, instance_index=args.index, total_count=args.count))
+    try:
+        asyncio.run(run_provisioning_flow(req, instance_index=args.index, total_count=args.count))
+    except RuntimeError as e:
+        # Suppress the known anyio/asyncio MCP session teardown error.
+        # This error fires AFTER provisioning completes successfully, during
+        # cleanup of the MCP stdio connection in a different asyncio task.
+        # It does NOT indicate a provisioning failure.
+        if "cancel scope" in str(e).lower():
+            print(f"[~] Ignoring known MCP session teardown warning: {e}")
+            sys.exit(0)
+        raise
