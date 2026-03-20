@@ -238,18 +238,95 @@ gcloud compute networks create proj-dev-core-vpc \
 
 ## 🐳 Dockerfiles (DevOps Artifacts)
 
-| Parameter | Allowed Values | Example |
-|---|---|---|
-| Base Image | `alpine`, `debian-slim`, `node:18-alpine`, `python:3.11-slim`, `gcr.io/google-samples/hello-app:1.0` | `python:3.11-slim` |
+The **Create Dockerfile** form (Pipeline & DevOps tab) has three fields:
 
-**Valid Dockerfile example:**
+### Field 1 — Base Image *(required)*
+
+Must be one of the approved images from `devops_standards.docker_images`:
+
+| Base Image | Use Case |
+|---|---|
+| `python:3.11-slim` | Python APIs, ML services, scripts |
+| `python:3.10-slim` | Python services (legacy compat) |
+| `python:3.12-slim` | Python services (latest) |
+| `node:18-alpine` | Node.js / Express / Next.js |
+| `node:20-alpine` | Node.js (latest LTS) |
+| `alpine:3.18` | Minimal base, custom builds |
+| `alpine` | Ultra-lightweight containers |
+| `debian:12-slim` | Debian-based, apt packages needed |
+| `debian-slim` | Alias for debian-slim |
+| `nginx:alpine` | Static site / reverse proxy |
+| `openjdk:17-slim` | Java / Spring Boot services |
+| `gcr.io/google-samples/hello-app:1.0` | GCP demo / hello-world |
+
+> ⛔ Any image NOT in the list above (e.g. `ubuntu:22.04`, `centos`) will be **REJECTED** by the Governance Agent.
+
+### Field 2 — Packages to Install *(optional)*
+
+Comma-separated list of OS packages to install via `apt-get` or `apk`.
+
+| Stack | Example |
+|---|---|
+| Python | `build-essential, libpq-dev` |
+| Node | `git, curl` |
+| Java | `maven, curl` |
+| Generic | `wget, ca-certificates` |
+
+### Field 3 — Commands to Run *(optional)*
+
+Commands to execute inside the container during the build (runs as `RUN` steps).
+
+| Stack | Example |
+|---|---|
+| Python | `pip install -r requirements.txt` |
+| Node | `npm install && npm run build` |
+| Java | `mvn package -DskipTests` |
+| Generic | `chmod +x entrypoint.sh` |
+
+---
+
+**Full Dockerfile examples per stack:**
+
+````carousel
+**Python FastAPI**
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-RUN pip install -r requirements.txt
-CMD ["python", "app.py"]
+EXPOSE 8080
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
+<!-- slide -->
+**Node.js Express**
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json .
+RUN npm install
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+<!-- slide -->
+**Java Spring Boot**
+```dockerfile
+FROM openjdk:17-slim
+WORKDIR /app
+COPY target/app.jar app.jar
+EXPOSE 8080
+CMD ["java", "-jar", "app.jar"]
+```
+<!-- slide -->
+**Nginx Static Site**
+```dockerfile
+FROM nginx:alpine
+COPY dist/ /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+````
 
 ---
 
