@@ -9,11 +9,15 @@
 The system follows a **3-Stage Agentic Pipeline** (`Think → Audit → Do`), triggered exclusively through GitHub Actions:
 
 ```
-User (Streamlit UI)
-         │
+User (Streamlit UI — 🤖 AI Assistant tab)
+         │  Types natural language: "VM for payments in dev"
          ▼
 ┌─────────────────────────────────────────────────────────┐
 │          DevSecOps AI Infra Provisioner (app.py)        │
+│                                                         │
+│   ui_policy_defaults.py ──► Policy Preview Panel        │
+│   (shows locked/editable params from vm_policy.py)      │
+│   User tweaks params → Confirms                         │
 │                                                         │
 │   GitHub PAT + Repo Config ──► GitHub REST API          │
 │   🚀 Deploy via GitHub Actions                          │
@@ -164,7 +168,8 @@ User (Streamlit UI)
 ```
 ai-infra-provisioner/
 ├── .env                          # Local env vars (not committed)
-├── app.py                        # Streamlit UI — DevSecOps AI Infra Provisioner
+├── app.py                        # Streamlit UI — AI Infra Provisioner
+├── ui_policy_defaults.py         # 🆕 Policy defaults helper for AI Assistant tab
 ├── main.py                       # CLI entrypoint for GitHub Actions runner
 ├── mcp_server.py                 # MCP policy server + tools
 ├── tools.py                      # run_gcloud tool wrapper
@@ -227,10 +232,15 @@ Available as the **🧺 Housekeeping** expander in the Streamlit sidebar. Cleans
 
 | Feature | Description |
 |---|---|
+| **🤖 AI Assistant tab** | Primary entry point — type a natural language request, get a policy preview instantly |
+| **Policy Preview Panel** | Shows every VM parameter pre-filled from `vm_policy.py`; locked fields (OS image, no-address, labels) are read-only |
+| **Editable policy params** | Zone, machine type, disk size (slider), disk type, instance count — all constrained to allowed values |
+| **"Confirm & Deploy" flow** | Single button triggers GitHub Actions with the exact (possibly overridden) parameter set |
 | DevSecOps Branding | Green/blue/indigo gradient — security-first identity |
 | GitHub-Only Deployment | No local execution — all changes go through GitHub Actions |
 | Unique Session IDs | `uuid4()` per session — no concurrent user collision |
 | Dry Run Toggle | Preview the request without triggering the workflow |
-| Pre-flight Checklist | Region/naming/service validation shown before submit |
+| Pre-flight Checklist | Region/naming/service validation shown before submit (legacy tab) |
 | Request History Panel | Last 5 requests with status in sidebar |
 | Parallel Provisioning | Set 1–10 instances; each runs as a separate matrix job |
+| Legacy Cloud Tabs | ☁️ Cloud Systems / 🚀 Pipeline & DevOps / 🤖 Agentic Apps / 🔧 Other Tools remain for non-VM resources |

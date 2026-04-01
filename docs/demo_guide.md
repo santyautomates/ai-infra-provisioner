@@ -1,71 +1,124 @@
-# AI Infrastructure Provisioner: Cloud Shell Demo Guide
+# AI Infrastructure Provisioner: Demo Guide
 
-This guide will walk you through setting up and demonstrating the AI Infrastructure Provisioner to your team using Google Cloud Shell.
+This guide walks you through demonstrating the DevSecOps AI Infra Provisioner to your team.
 
-## 1. Preparing the Environment (Cloud Shell)
+---
 
-1.  **Open Cloud Shell**: Navigate to the [Google Cloud Console](https://console.cloud.google.com/) and click the "**Activate Cloud Shell**" icon in the top right.
-2.  **Upload/Clone Code**: Upload the `ai-infra-provisioner_backup_20260310.tar.gz` archive to Cloud Shell and extract it, or clone your repository.
-    ```bash
-    tar -xzf ai-infra-provisioner_backup_20260310.tar.gz
-    cd ai-infra-provisioner
-    ```
-3.  **Run Setup**: We provided a handy script to set up your Python virtual environment and prompt you for the required API keys and new Project ID.
-    ```bash
-    chmod +x setup_cloudshell.sh
-    ./setup_cloudshell.sh
-    ```
+## 1. Preparing the Environment
+
+1. **Clone the repo** and navigate into the project:
+   ```bash
+   cd ai-infra-provisioner
+   ```
+
+2. **Create a virtual environment and install dependencies:**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. **Configure your `.env` file** (copy from `.env.example` if present):
+   ```
+   GOOGLE_API_KEY=<your Gemini API key>
+   GOOGLE_CLOUD_PROJECT=<your GCP project ID>
+   GITHUB_PAT=<your GitHub Personal Access Token>
+   ```
+
+---
 
 ## 2. Customizing for Your Demo Project
 
-To make the demo relevant to your team, you can quickly customize the organizational policies encoded in the MCP Server.
+To adapt the organizational policies for your team, open `mcp_server.py` and modify the `POLICIES` dict (around line 20):
 
-Open `mcp_server.py` and modify the `POLICIES` dictionary (around line 20):
-
-### Customizing Regions
-Change the allowed regions to match your team's typical deployment zones:
+### Customizing Allowed Regions
 ```python
-"allowed_regions": ["us-east1", "europe-west4"],
+"allowed_regions": ["us-east1", "us-central1"],
 ```
 
 ### Customizing Naming Conventions
-Change the prefixes to match your new project's standards. For example, if your new project is `acme-corp`, change `proj-` to `acme-`:
+Change the `proj-` prefix to match your organization:
 ```python
 "naming_conventions": {
-    "vm": "acme-[env]-[service]-vm",
+    "vm":  "acme-[env]-[service]-vm",
     "vpc": "acme-[env]-[service]-vpc",
     # ...
 }
 ```
 
+> Any naming changes will also automatically appear in the AI Assistant's Policy Preview Panel because `ui_policy_defaults.py` reads from `vm_policy.py` directly.
+
+---
+
 ## 3. Running the Demo
 
-Now that the policies are customized and the environment is set up, you can start running demo prompts using the new Web UI. 
-
-Make sure your virtual environment is activated, then start the Streamlit app:
+Start the Streamlit app:
 ```bash
-# Ensure your environment is active:
 source .venv/bin/activate
-
-# Start the Streamlit App:
 streamlit run app.py
 ```
 
-This will provide a URL (usually `http://localhost:8501`) which you can open in your browser or through Cloud Shell's "Web Preview" feature.
+Open `http://localhost:8501` in your browser (or use Cloud Shell Web Preview).
 
-Once the UI is open, you can demonstrate the following scenarios using the text input box:
+---
 
-**Demo Scenario A: The Happy Path (Successful Provisioning)**
-Show how a simple natural language prompt generates and executes secure infrastructure. Enter this into the app:
-> "Create a VPC network for core-networking in stag environment"
-*(The system should plan it, govern it, and ultimately create `acme-stag-core-networking-vpc`)*
+## 4. Demo Scenarios
 
-**Demo Scenario B: Policy Rejection (The "Guardrail")**
-Show how the Governance agent blocks non-compliant requests. Enter this:
-> "Deploy an e2-highmem-16 VM in asia-south1"
-*(The system should REJECT the plan because `asia-south1` is not in our `allowed_regions` and `e2-highmem-16` is not an allowed machine type.)*
+### 🤖 Scenario A: AI Assistant — Happy Path (VM Provisioning)
 
-**Demo Scenario C: Safe Deletion**
-Show how the agent discovers existing infrastructure to prevent hallucinations before deleting.
-> "Delete the core networking vpc we just made"
-*(The Planner will autonomously list VPCs, identify `acme-stag-core-networking-vpc`, and govern its deletion securely.)*
+Demonstrates the new **conversational agentic provisioning** flow.
+
+1. Click the **🤖 AI Assistant** tab (first tab, selected by default).
+2. Type any natural language VM request:
+   > "I want a VM for the payments service in dev"
+3. Click **🔍 Analyse Request**.
+4. The **Policy Preview Panel** appears instantly:
+   - **Editable fields** pre-filled: instance name (`proj-dev-payments-vm`), zone (`us-east1-d`), machine type (`e2-micro`), disk size (50 GB)
+   - **Locked fields** shown read-only: OS image (`debian-12`), no public IP, OS Login enabled, labels
+5. Optionally change the Zone or Disk Size.
+6. Click **✅ Confirm & Deploy via GitHub Actions**.
+
+*The system dispatches a fully-formed, policy-compliant provisioning request to GitHub Actions — no manual form-filling required.*
+
+---
+
+### 🛡️ Scenario B: Policy Rejection (Governance Guardrail)
+
+Shows how the Governance Agent blocks non-compliant requests via the legacy **☁️ Cloud Systems** tab.
+
+1. Select **☁️ Cloud Systems → GCP Configuration → Compute Engine**.
+2. Change the zone to `us-west1-a` and the machine type to `e2-highmem-16`.
+3. Click **🚀 Deploy via GitHub Actions**.
+4. *(The Governance Agent will REJECT the plan — `us-west1-a` is not in `allowed_regions` and `e2-highmem-16` is not an allowed machine type.)*
+
+---
+
+### 🗑️ Scenario C: Safe Deletion
+
+Shows how the agent discovers existing resources before deleting.
+
+1. In the AI Assistant tab, type:
+   > "Delete the payments VM in dev"
+2. The Planner will call `list_gcp_resources(instances)` first to confirm the resource exists, then govern its deletion.
+
+---
+
+### 📋 Scenario D: DevOps Artifact — Dockerfile
+
+1. Click **🚀 Pipeline & DevOps → Create Dockerfile**.
+2. Set Base Image to `python:3.11-slim`.
+3. Deploy via GitHub Actions.
+4. *(The Governance Agent automatically validates the base image against `devops_standards.docker_images`. The artifact is saved to `generated_artifacts/`.)*
+
+---
+
+## 5. Governance Policy Quick Reference
+
+| Check | Enforced By | How to pass |
+|---|---|---|
+| Region | Governance Agent | Use `us-east1` or `us-central1` |
+| VM naming | Governance Agent | `proj-[env]-[service]-vm` |
+| Machine type (dev) | Governance Agent + AI Assistant preview | `e2-micro`, `e2-small`, `e2-medium` |
+| OS image | AI Assistant (locked) + Governance | `debian-12 / debian-cloud` |
+| No public IP | AI Assistant (locked) + Governance | `--no-address` (always added) |
+| Labels | AI Assistant (locked) + Governance | `env`, `service`, `managed-by=autoinfra` |

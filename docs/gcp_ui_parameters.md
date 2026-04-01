@@ -1,7 +1,23 @@
 # GCP UI Parameters — Policy-Aligned Reference
 
-> All examples below are compliant with the organizational policies defined in `mcp_server.py`.
+> All examples below are compliant with the organizational policies defined in `mcp_server.py` and `policies/vm_policy.py`.
 > Any value outside these constraints will be **REJECTED** by the Governance Agent.
+
+---
+
+## 🤖 AI Assistant — Agentic Provisioning (Primary UI)
+
+The **AI Assistant tab** (first tab in the UI) provides a conversational provisioning experience for Compute Engine VMs:
+
+1. **Describe your need** in plain English: *"I want a VM for the payments service in dev"*
+2. The system **extracts intent** (environment + service name) and shows a **Policy Preview Panel**:
+   - **Locked 🔒** — OS image, public IP, OS Login, labels — read-only, policy-enforced
+   - **Editable ✏️** — instance name, zone, machine type, disk size, disk type, instance count — pre-filled with policy defaults
+3. Modify any editable field, then click **✅ Confirm & Deploy via GitHub Actions**
+
+The helper module `ui_policy_defaults.py` reads `VM_POLICY` directly so the preview is always in sync with the governance rules.
+
+> For all other GCP services (Cloud Run, GKE, SQL, etc.) use the **☁️ Cloud Systems** tab.
 
 ---
 
@@ -95,11 +111,14 @@ gcloud compute instances create proj-dev-payment-vm-1 \
   --machine-type=e2-small \
   --image-family=debian-12 \
   --image-project=debian-cloud \
-  --boot-disk-size=10GB \
-  --boot-disk-type=pd-standard \
+  --boot-disk-size=50GB \
+  --boot-disk-type=pd-balanced \
   --no-address \
-  --labels=env=dev,service=payment,managed-by=shieldinfra
+  --metadata=enable-oslogin=TRUE \
+  --labels=env=dev,service=payment,managed-by=autoinfra
 ```
+
+> ℹ️ When using the AI Assistant tab, this exact command is constructed automatically from the Policy Preview Panel parameters.
 
 ---
 
@@ -131,7 +150,7 @@ gcloud run deploy proj-dev-payment-cloudrun \
 | Parameter | Allowed Values | Example |
 |---|---|---|
 | Instance ID | Pattern above | `proj-prod-payment-db` |
-| Region | See allowed regions | `europe-west1` |
+| Region | See allowed regions | `us-east1` |
 | Database Version | `POSTGRES_15`, `MYSQL_8_0`, `SQLSERVER_2019_STANDARD` | `POSTGRES_15` |
 | Tier | `db-f1-micro`, `db-g1-small`, `db-custom-1-3840` | `db-g1-small` |
 
@@ -140,7 +159,7 @@ gcloud run deploy proj-dev-payment-cloudrun \
 gcloud sql instances create proj-prod-payment-db \
   --database-version=POSTGRES_15 \
   --tier=db-g1-small \
-  --region=europe-west1
+  --region=us-east1
 ```
 
 ---
@@ -152,14 +171,14 @@ gcloud sql instances create proj-prod-payment-db \
 | Parameter | Allowed Values | Example |
 |---|---|---|
 | Cluster Name | Pattern above | `proj-stag-backend-cluster` |
-| Region | See allowed regions | `asia-northeast1` |
+| Region | See allowed regions | `us-central1` |
 | Machine Type | Same as VM: `allowed_machine_types` | `e2-small` |
 | Node Count | 1–10 | `3` |
 
 **Valid gcloud command example:**
 ```bash
 gcloud container clusters create proj-stag-backend-cluster \
-  --region=asia-northeast1 \
+  --region=us-central1 \
   --machine-type=e2-small \
   --num-nodes=3
 ```
@@ -238,95 +257,18 @@ gcloud compute networks create proj-dev-core-vpc \
 
 ## 🐳 Dockerfiles (DevOps Artifacts)
 
-The **Create Dockerfile** form (Pipeline & DevOps tab) has three fields:
+| Parameter | Allowed Values | Example |
+|---|---|---|
+| Base Image | `alpine`, `debian-slim`, `node:18-alpine`, `python:3.11-slim`, `gcr.io/google-samples/hello-app:1.0` | `python:3.11-slim` |
 
-### Field 1 — Base Image *(required)*
-
-Must be one of the approved images from `devops_standards.docker_images`:
-
-| Base Image | Use Case |
-|---|---|
-| `python:3.11-slim` | Python APIs, ML services, scripts |
-| `python:3.10-slim` | Python services (legacy compat) |
-| `python:3.12-slim` | Python services (latest) |
-| `node:18-alpine` | Node.js / Express / Next.js |
-| `node:20-alpine` | Node.js (latest LTS) |
-| `alpine:3.18` | Minimal base, custom builds |
-| `alpine` | Ultra-lightweight containers |
-| `debian:12-slim` | Debian-based, apt packages needed |
-| `debian-slim` | Alias for debian-slim |
-| `nginx:alpine` | Static site / reverse proxy |
-| `openjdk:17-slim` | Java / Spring Boot services |
-| `gcr.io/google-samples/hello-app:1.0` | GCP demo / hello-world |
-
-> ⛔ Any image NOT in the list above (e.g. `ubuntu:22.04`, `centos`) will be **REJECTED** by the Governance Agent.
-
-### Field 2 — Packages to Install *(optional)*
-
-Comma-separated list of OS packages to install via `apt-get` or `apk`.
-
-| Stack | Example |
-|---|---|
-| Python | `build-essential, libpq-dev` |
-| Node | `git, curl` |
-| Java | `maven, curl` |
-| Generic | `wget, ca-certificates` |
-
-### Field 3 — Commands to Run *(optional)*
-
-Commands to execute inside the container during the build (runs as `RUN` steps).
-
-| Stack | Example |
-|---|---|
-| Python | `pip install -r requirements.txt` |
-| Node | `npm install && npm run build` |
-| Java | `mvn package -DskipTests` |
-| Generic | `chmod +x entrypoint.sh` |
-
----
-
-**Full Dockerfile examples per stack:**
-
-````carousel
-**Python FastAPI**
+**Valid Dockerfile example:**
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-EXPOSE 8080
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+RUN pip install -r requirements.txt
+CMD ["python", "app.py"]
 ```
-<!-- slide -->
-**Node.js Express**
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json .
-RUN npm install
-COPY . .
-EXPOSE 3000
-CMD ["node", "server.js"]
-```
-<!-- slide -->
-**Java Spring Boot**
-```dockerfile
-FROM openjdk:17-slim
-WORKDIR /app
-COPY target/app.jar app.jar
-EXPOSE 8080
-CMD ["java", "-jar", "app.jar"]
-```
-<!-- slide -->
-**Nginx Static Site**
-```dockerfile
-FROM nginx:alpine
-COPY dist/ /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-```
-````
 
 ---
 
@@ -368,11 +310,19 @@ spec:
 
 ## ⚙️ CI/CD Pipelines
 
-Pipelines must target only:
-- `github_actions`
-- `gitlab_ci`
+Pipelines must target one of the approved CI/CD platforms from `devops_standards.ci_cd_allowed_platforms`:
 
-Any other platform (Jenkins, CircleCI, etc.) will not be validated by the governance agent for automated provisioning.
+| Platform | Status |
+|---|---|
+| `github_actions` | ✅ Approved |
+| `gitlab_ci` | ✅ Approved |
+| `google_cloud_build` | ✅ Approved |
+| `jenkins` | ✅ Approved |
+| `circleci` | ✅ Approved |
+| `azure_pipelines` | ✅ Approved |
+| `aws_codepipeline` | ✅ Approved |
+| `travis_ci` | ✅ Approved |
+| `bitbucket_pipelines` | ✅ Approved |
 
 ---
 

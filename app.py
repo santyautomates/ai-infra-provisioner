@@ -5,6 +5,7 @@ import streamlit as st
 import requests
 import subprocess
 from dotenv import load_dotenv
+from ui_policy_defaults import get_vm_defaults, build_vm_request_string
 
 # Load environment variables
 load_dotenv()
@@ -113,6 +114,16 @@ if "request_history" not in st.session_state:
 if "session_uid" not in st.session_state:
     st.session_state.session_uid = str(uuid.uuid4())[:8]
 
+# AI Assistant state machine
+if "ai_stage" not in st.session_state:
+    st.session_state.ai_stage = "idle"   # idle | preview | deploying
+if "ai_raw_request" not in st.session_state:
+    st.session_state.ai_raw_request = ""
+if "ai_vm_params" not in st.session_state:
+    st.session_state.ai_vm_params = {}
+if "ai_request_string" not in st.session_state:
+    st.session_state.ai_request_string = ""
+
 # --- Sidebar Configuration ---
 with st.sidebar:
     # GitHub Integration (collapsible)
@@ -161,7 +172,215 @@ with st.container():
     service = ""
 
     # Use tabs to categorize features for a cleaner SaaS-like UI
-    tab_cloud, tab_devops, tab_agentic, tab_utils = st.tabs(["☁️ Cloud Systems", "🚀 Pipeline & DevOps", "🤖 Agentic Apps", "🔧 Other Tools"])
+    tab_ai, tab_cloud, tab_devops, tab_agentic, tab_utils = st.tabs(["🤖 AI Assistant", "☁️ Cloud Systems", "🚀 Pipeline & DevOps", "🤖 Agentic Apps", "🔧 Other Tools"])
+
+    # ─────────────────────── AI ASSISTANT TAB ───────────────────────────────
+    with tab_ai:
+        st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(16,185,129,0.08));
+            border: 1px solid rgba(99,102,241,0.2); border-radius:12px; padding:20px; margin-bottom:16px;">
+  <h3 style="margin:0 0 6px 0; color:#a5b4fc;">🤖 AI Provisioning Assistant</h3>
+  <p style="margin:0; color:#94a3b8; font-size:0.92rem;">
+    Describe what you need in plain English. The AI will show you the <b>exact policy-compliant configuration</b>,
+    let you tweak allowed parameters, then deploy — all in one click.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+        # ─── Step 1: Natural language input ───
+        if st.session_state.ai_stage == "idle":
+            with st.form("ai_request_form", clear_on_submit=False):
+                user_nl = st.text_area(
+                    "What do you want to provision?",
+                    placeholder="e.g.  Create a VM for the payments service in dev\n       I need a VM for order-service in production",
+                    height=100,
+                    key="ai_nl_input",
+                )
+                submitted = st.form_submit_button("🔍 Analyse Request", use_container_width=True)
+
+            if submitted and user_nl.strip():
+                import re
+                # --- Simple intent extraction ---
+                text = user_nl.lower()
+
+                # Detect environment
+                env = "dev"
+                for e in ["prod", "production", "stag", "staging"]:
+                    if e in text:
+                        env = "stag" if "stag" in e else ("prod" if "prod" in e else "dev")
+                        break
+
+                # Detect service name (word after 'for the', 'for', 'named')
+                service_match = re.search(
+                    r'(?:for the |for |service[: ]+|named? )(\b[a-z][a-z0-9_-]{1,30}\b)',
+                    text
+                )
+                svc = service_match.group(1) if service_match else "myservice"
+                # Remove stop-words that leak in
+                for stop in ["service", "vm", "instance", "the", "a", "an", "in", "on"]:
+                    if svc == stop:
+                        svc = "myservice"
+                        break
+
+                st.session_state.ai_raw_request = user_nl
+                st.session_state.ai_vm_params = get_vm_defaults(env=env, service=svc)
+                st.session_state.ai_stage = "preview"
+                st.rerun()
+
+        # ─── Step 2: Policy Preview Panel ───
+        elif st.session_state.ai_stage in ("preview", "deploying"):
+            p = st.session_state.ai_vm_params
+            env  = p["_env"]
+            svc  = p["_service"]
+
+            st.markdown(f"""
+<div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25);
+            border-radius:10px; padding:6px 16px; margin-bottom:12px;">
+  <p style="margin:4px 0; color:#6ee7b7; font-size:0.85rem;">
+  📨 <b>Your request:</b> {st.session_state.ai_raw_request}
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+            st.markdown("#### 📋 Proposed Configuration")
+            st.info(
+                "**Locked** 🔒 fields are enforced by organisational policy and cannot be changed.  \n"
+                "**Editable** ✏️ fields are pre-filled with policy defaults — modify as needed.",
+                icon="🛡️",
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("**✏️ Instance Name**")
+                p["instance_name"] = st.text_input(
+                    "Instance Name",
+                    value=p["instance_name"],
+                    key="ai_vm_name",
+                    label_visibility="collapsed",
+                    help="Must match: proj-[env]-[service]-vm",
+                )
+
+                st.markdown("**✏️ Zone**")
+                p["zone"] = st.selectbox(
+                    "Zone",
+                    options=p["_allowed_zones"],
+                    index=p["_allowed_zones"].index(p["zone"]) if p["zone"] in p["_allowed_zones"] else 0,
+                    key="ai_vm_zone",
+                    label_visibility="collapsed",
+                )
+
+                st.markdown("**✏️ Machine Type**  *(policy tier: `{}`)*".format(env))
+                p["machine_type"] = st.selectbox(
+                    "Machine Type",
+                    options=p["_allowed_machine_types"],
+                    index=p["_allowed_machine_types"].index(p["machine_type"]) if p["machine_type"] in p["_allowed_machine_types"] else 0,
+                    key="ai_vm_mtype",
+                    label_visibility="collapsed",
+                )
+
+                st.markdown("**✏️ Boot Disk Size (GB)**  *({} – {} GB)*".format(p["_min_disk_gb"], p["_max_disk_gb"]))
+                p["disk_size_gb"] = st.slider(
+                    "Disk Size GB",
+                    min_value=p["_min_disk_gb"],
+                    max_value=p["_max_disk_gb"],
+                    value=p["disk_size_gb"],
+                    step=10,
+                    key="ai_vm_disk",
+                    label_visibility="collapsed",
+                )
+
+                st.markdown("**✏️ Boot Disk Type**")
+                p["disk_type"] = st.selectbox(
+                    "Disk Type",
+                    options=p["_allowed_disk_types"],
+                    index=p["_allowed_disk_types"].index(p["disk_type"]) if p["disk_type"] in p["_allowed_disk_types"] else 0,
+                    key="ai_vm_disktype",
+                    label_visibility="collapsed",
+                )
+
+                st.markdown("**✏️ Number of Instances**")
+                p["instance_count"] = st.number_input(
+                    "Instances",
+                    min_value=1, max_value=10, value=p["instance_count"],
+                    key="ai_vm_count",
+                    label_visibility="collapsed",
+                    help="Provisions N identical VMs in parallel via GitHub Actions matrix.",
+                )
+
+            with col2:
+                st.markdown("**🔒 OS Image** *(policy-enforced)*")
+                st.code(f"{p['image_family']} / {p['image_project']}", language=None)
+
+                st.markdown("**🔒 Public IP** *(policy-enforced)*")
+                st.code("None  —  --no-address", language=None)
+
+                st.markdown("**🔒 OS Login** *(policy-enforced)*")
+                st.code("Enabled  —  --metadata=enable-oslogin=TRUE", language=None)
+
+                st.markdown("**🔒 Required Labels** *(policy-enforced)*")
+                st.code(
+                    f"env={env}\nservice={svc}\nmanaged-by=autoinfra",
+                    language=None,
+                )
+
+                st.markdown("**🔒 Required APIs** *(auto-enabled by planner)*")
+                st.code(
+                    "compute.googleapis.com\ncloudresourcemanager.googleapis.com\niam.googleapis.com",
+                    language=None,
+                )
+
+            st.divider()
+
+            # Build the request string from current widget values
+            st.session_state.ai_request_string = build_vm_request_string(p)
+
+            with st.expander("🔎 Preview request that will be sent to the AI pipeline", expanded=False):
+                st.code(st.session_state.ai_request_string, language="text")
+
+            col_back, col_deploy = st.columns([1, 3])
+            with col_back:
+                if st.button("↩️ Start Over", use_container_width=True):
+                    st.session_state.ai_stage = "idle"
+                    st.session_state.ai_vm_params = {}
+                    st.session_state.ai_request_string = ""
+                    st.rerun()
+
+            with col_deploy:
+                deploy_btn = st.button(
+                    "✅ Confirm & Deploy via GitHub Actions",
+                    type="primary",
+                    use_container_width=True,
+                    key="ai_deploy_btn",
+                )
+
+            if deploy_btn:
+                if not github_pat:
+                    st.error("⚠️ Please provide a GitHub Personal Access Token in the sidebar.")
+                    st.stop()
+
+                _count = int(p["instance_count"])
+                final_req = st.session_state.ai_request_string
+
+                st.toast("📤 Dispatching to GitHub Actions...", icon="⚙️")
+                success, message = trigger_github_workflow(
+                    github_pat, github_repo, github_workflow, final_req, count=_count
+                )
+                if success:
+                    st.success(message)
+                    st.balloons()
+                    import datetime
+                    st.session_state.request_history.append({
+                        "feature": f"VM ({env}/{svc})",
+                        "summary": final_req[:80] + "...",
+                        "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                        "status": "success",
+                    })
+                    st.session_state.ai_stage = "idle"
+                    st.session_state.ai_vm_params = {}
+                else:
+                    st.error(message)
+                st.stop()
 
     def reset_other_features(active_key):
         for key in ['cloud_feat', 'devops_feat', 'agentic_feat', 'utils_feat']:
@@ -175,7 +394,7 @@ with st.container():
     with tab_agentic:
         agentic_feature = st.selectbox("Select Agentic Service", ["Select a Feature", "Agentic Development"], key="agentic_feat", on_change=reset_other_features, args=("agentic_feat",))
     with tab_utils:
-        utils_feature = st.selectbox("Select Utilities", ["Select a Feature", "Cloudflare Configuration", "Developer Configuration"], key="utils_feat", on_change=reset_other_features, args=("utils_feat",))
+        utils_feature = st.selectbox("Select Utilities", ["Select a Feature", "Developer Configuration"], key="utils_feat", on_change=reset_other_features, args=("utils_feat",))
 
     feature = "Select a Feature"
     if cloud_feature != "Select a Feature": feature = cloud_feature
@@ -804,8 +1023,11 @@ if feature != "Select a Feature":
         internal_guidance = "Draft standard gcloud CLI commands to create these resources. Do not use Deployment Manager or Terraform. Ensure all commands are valid and follow GCP best practices."
         user_request = f"Create the following GCP {service} via gcloud commands with details: {additional_input}. {internal_guidance}"
 
+    # If the user is in the AI Assistant tab, user_request is handled above.
+    # For the legacy tab-based flow, require a selection.
     if not user_request:
-        st.warning("Please define your requirements first.")
+        if st.session_state.get("ai_stage") != "preview":
+            st.warning("Please define your requirements first.")
         st.stop()
 
     if github_button:
