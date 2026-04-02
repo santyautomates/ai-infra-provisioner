@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 # Per-service policy modules
 from policies.vm_policy import VM_POLICY
+from policies.cloudrun_policy import CLOUDRUN_POLICY
 
 # Load environment variables
 load_dotenv()
@@ -29,7 +30,8 @@ POLICIES = {
     # SQL tiers — will be moved to policies/sql_policy.py in a future iteration
     "allowed_sql_tiers": ["db-f1-micro", "db-g1-small", "db-custom-1-3840"],
 
-    # Naming conventions for all services EXCEPT VM (moved to vm_policy.py)
+    # Naming conventions for all services EXCEPT VM and Cloud Run
+    # (VM → policies/vm_policy.py, Cloud Run → policies/cloudrun_policy.py)
     "naming_conventions": {
         "gke":                "proj-[env]-[service]-cluster",
         "sql":                "proj-[env]-[service]-db",
@@ -37,7 +39,6 @@ POLICIES = {
         "pubsub_topic":       "proj-[env]-[service]-topic",
         "pubsub_subscription":"proj-[env]-[service]-sub",
         "redis":              "proj-[env]-[service]-cache",
-        "cloudrun":           "proj-[env]-[service]-cloudrun",
         "vpc":                "proj-[env]-[service]-vpc",
         "subnet":             "proj-[env]-[service]-subnet",
         "artifact_registry":  "proj-[env]-[service]-repo",
@@ -56,11 +57,6 @@ POLICIES = {
         "memorystore":        "proj-[env]-[service]-cache",
         "monitoring_alert":   "proj-[env]-[service]-alert",
         "default_fallback":   "proj-[env]-[service]-[short_resource_name]",
-    },
-
-    # Cloud Run security — will move to cloud_run_policy.py later
-    "security_policies": {
-        "allow_unauthenticated_cloudrun": True,
     },
 
     "environments": ["dev", "stag", "prod"],
@@ -136,6 +132,31 @@ def get_vm_policies() -> str:
     """
     logger.info("Fetching VM-specific governance policies via MCP")
     return json.dumps(VM_POLICY, indent=2)
+
+
+@mcp.tool()
+def get_cloudrun_policies() -> str:
+    """
+    Retrieve the FULL governance policy for GCP Cloud Run service provisioning.
+    Use this tool whenever the user request involves creating, modifying, or deleting
+    a Cloud Run service.
+
+    Returns detailed rules for:
+    - Naming convention and regex pattern (proj-[env]-[service]-cloudrun)
+    - Allowed regions
+    - Approved container image registries
+    - CPU & memory limits per environment tier (dev/stag/prod)
+    - Concurrency and min/max instance scaling limits
+    - Authentication and ingress rules
+    - Required resource labels (env, service, managed-by)
+    - Required API enablement steps
+    - A ready-to-use gcloud run deploy command template
+    - Deletion policy
+    - Common rejection reasons with exact remediation steps
+    """
+    logger.info("Fetching Cloud Run-specific governance policies via MCP")
+    return json.dumps(CLOUDRUN_POLICY, indent=2)
+
 
 @mcp.tool()
 def list_gcp_resources(resource_type: str = "networks") -> str:
