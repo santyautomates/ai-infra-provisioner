@@ -136,6 +136,14 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
         "execution_result": None,
     }
     
+    # Increase MCP tool-call timeout: default 5s is too short for gcloud
+    # commands like 'gcloud services enable' which can take 20-60s.
+    try:
+        import mcp.shared.session as _mcp_session
+        _mcp_session.DEFAULT_REQUEST_TIMEOUT_SEC = 120
+    except Exception:
+        pass  # Older mcp versions may not have this attribute
+
     # Use native ADK McpToolset wrapping instead of older mcp class
     server_params = StdioConnectionParams(
         server_params=StdioServerParameters(
