@@ -6,6 +6,7 @@ import requests
 import subprocess
 from dotenv import load_dotenv
 from ui_policy_defaults import get_vm_defaults, build_vm_request_string
+import config as cfg
 
 # Load environment variables
 load_dotenv()
@@ -126,14 +127,38 @@ if "ai_request_string" not in st.session_state:
 
 # --- Sidebar Configuration ---
 with st.sidebar:
+    # GCP Project Settings (collapsible)
+    with st.expander("⚙️ GCP Project Settings", expanded=False):
+        gcp_project_id = st.text_input(
+            "GCP Project ID",
+            value=cfg.GCP_PROJECT_ID,
+            help="Target GCP project. Defaults to GCP_PROJECT_ID in .env",
+            key="gcp_project_id",
+        )
+        gcs_state_bucket = st.text_input(
+            "GCS State Bucket",
+            value=cfg.GCS_STATE_BUCKET,
+            help="Central state bucket (org-wide). Defaults to GCS_STATE_BUCKET in .env",
+            key="gcs_state_bucket",
+        )
+        gcs_state_prefix = st.text_input(
+            "State Namespace (prefix)",
+            value=cfg.GCS_STATE_PREFIX or gcp_project_id,
+            help="Namespace inside the bucket, typically your project ID",
+            key="gcs_state_prefix",
+        )
+        if gcp_project_id != cfg.GCP_PROJECT_ID:
+            st.warning(f"⚠️ Overriding default project: `{cfg.GCP_PROJECT_ID}` → `{gcp_project_id}`")
+        st.caption("💡 Set `GCP_PROJECT_ID`, `GCS_STATE_BUCKET` in `.env` to pre-fill these fields.")
+
     # GitHub Integration (collapsible)
     with st.expander("🐙 GitHub Integration", expanded=False):
         st.image("https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png", width=40)
         default_pat = os.getenv("GITHUB_PAT", "")
         github_pat = st.text_input("Personal Access Token (PAT)", value=default_pat, type="password", help="Required to trigger GitHub Actions workflows. Needs 'workflow' scope.")
-        github_repo = st.text_input("Repository (owner/repo)", value="santyautomates/ai-infra-provisioner", help="Target GitHub repository for the workflow dispatch.")
-        github_workflow = st.text_input("Workflow Filename", value="provision.yml", help="Filename inside .github/workflows/ to trigger.")
-        st.info("💡 Set `GITHUB_PAT` in your `.env` to auto-fill.")
+        github_repo = st.text_input("Repository (owner/repo)", value=cfg.GITHUB_REPO, help="Target GitHub repository for the workflow dispatch.")
+        github_workflow = st.text_input("Workflow Filename", value=cfg.GITHUB_WORKFLOW, help="Filename inside .github/workflows/ to trigger.")
+        st.info("💡 Set `GITHUB_PAT`, `GITHUB_REPO` in your `.env` to auto-fill.")
 
     # Housekeeping (collapsible)
     with st.expander("🧺 Housekeeping", expanded=False):

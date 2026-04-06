@@ -10,6 +10,10 @@ from dotenv import load_dotenv
 from policies.vm_policy import VM_POLICY
 from policies.cloudrun_policy import CLOUDRUN_POLICY
 
+# Config + state
+import config as cfg
+from state_manager import StateManager
+
 # Load environment variables
 load_dotenv()
 
@@ -250,7 +254,88 @@ def execute_shell_command(command: str) -> str:
 
 
 @mcp.tool()
+def read_infra_state(resource_name: str) -> str:
+    """
+    Check whether a resource already exists in the infrastructure state store.
+    Call this BEFORE attempting to provision any resource to avoid duplicates.
+
+    Returns a JSON object with:
+      - found: true/false
+      - status: RUNNING | DELETED | FAILED | not_found
+      - state: full state object if found, null otherwise
+
+    If status is RUNNING, skip provisioning — the resource already exists.
+    If status is DELETED or not_found, proceed with provisioning.
+    """
+    logger.info(f"Reading infra state for: {resource_name}")
+    sm = StateManager()
+    state = sm.read_state(resource_name)
+    if state:
+        return json.dumps({"found": True, "status": state.get("status"), "state": state})
+    return json.dumps({"found": False, "status": "not_found", "state": None})
+
+
+@mcp.tool()
+def write_infra_state(
+    resource_name: str,
+    resource_type: str,
+    status: str = "RUNNING",
+    region: str = "",
+    zone: str = "",
+    environment: str = "",
+    service: str = "",
+    run_id: str = "",
+) -> str:
+    """
+    Write or update the state for a provisioned resource.
+    Call this AFTER successfully creating or deleting a resource.
+
+    Args:
+        resource_name:  Full resource name, e.g. proj-dev-payments-vm
+        resource_type:  compute_instance | cloud_run_service | gke_cluster | etc.
+        status:         RUNNING (after create) | DELETED (after delete) | FAILED
+        region:         GCP region
+        zone:           GCP zone (for Compute Engine)
+        environment:    dev | stag | prod
+        service:        Service name, e.g. payments
+        run_id:         GitHub Actions run ID for traceability
+    """
+    logger.info(f"Writing infra state: {resource_name} → {status}")
+    import os
+    sm = StateManager()
+    ok = sm.write_state(
+        resource_name=resource_name,
+        resource_type=resource_type,
+        status=status,
+        region=region or None,
+        zone=zone or None,
+        environment=environment or None,
+        service=service or None,
+        run_id=run_id or os.environ.get("GITHUB_RUN_ID"),
+        repo=cfg.GITHUB_REPO,
+    )
+    return json.dumps({"success": ok, "resource_name": resource_name, "status": status})
+
+
+@mcp.tool()
+def list_infra_state(status_filter: str = "") -> str:
+    """
+    List all managed infrastructure resources for this project.
+    Useful for discovering what has already been provisioned.
+
+    Args:
+        status_filter: Optional. Filter by 'RUNNING', 'DELETED', or 'FAILED'.
+                       Leave empty to list all resources.
+    """
+    logger.info(f"Listing infra state (filter={status_filter or 'all'})")
+    sm = StateManager()
+    resources = sm.list_states(status_filter=status_filter or None)
+    return json.dumps({"project_id": cfg.GCP_PROJECT_ID, "resources": resources})
+
+
+@mcp.tool()
 def run_code(code: str, language: str = "bash") -> str:
+
     """
     STUB: This tool is intentionally disabled for security and governance reasons.
     
