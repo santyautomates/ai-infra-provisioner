@@ -15,6 +15,8 @@ from google.genai import types
 from mcp import StdioServerParameters
 
 from tools import run_gcloud, GcloudCommandArgs
+import config as cfg
+from state_manager import StateManager
 
 # Load environment variables from .env file
 load_dotenv()
@@ -69,6 +71,57 @@ def _write_provision_artifact(audit: dict):
 
     print(f"[+] Artifact saved → {json_path}")
     print(f"[+] Report saved  → {txt_path}")
+
+def _write_resource_state(user_request: str, status: str, audit: dict):
+    """
+    Extract the resource name from the plan and write state to GCS.
+    Falls back silently if GCS is unavailable — never blocks the pipeline.
+    """
+    import re
+    resource_name = None
+
+    # Try to extract resource name from the plan text
+    plan = audit.get("plan", "") or ""
+
+    # Match: proj-[env]-[service]-vm or proj-[env]-[service]-cloudrun etc.
+    match = re.search(r'\bproj-(?:dev|stag|prod)-[a-z0-9\-]+\b', plan)
+    if match:
+        resource_name = match.group(0)
+
+    if not resource_name:
+        # Best-effort fallback: shorten the request to a slug
+        slug = re.sub(r'[^a-z0-9]+', '-', user_request.lower())[:40].strip('-')
+        resource_name = f"unknown-{slug}"
+
+    # Guess resource type from plan keywords
+    plan_lower = plan.lower()
+    if "cloud run" in plan_lower or "cloudrun" in plan_lower or "gcloud run" in plan_lower:
+        resource_type = "cloud_run_service"
+    elif "compute instances" in plan_lower or "gcloud compute" in plan_lower:
+        resource_type = "compute_instance"
+    elif "gke" in plan_lower or "container clusters" in plan_lower:
+        resource_type = "gke_cluster"
+    else:
+        resource_type = "gcp_resource"
+
+    run_id = os.environ.get("GITHUB_RUN_ID", "local")
+
+    try:
+        sm = StateManager(project_id=cfg.GCP_PROJECT_ID)
+        ok = sm.write_state(
+            resource_name=resource_name,
+            resource_type=resource_type,
+            status=status,
+            run_id=run_id,
+            repo=cfg.GITHUB_REPO,
+            extra={"governance_status": audit.get("governance_status")},
+        )
+        if ok:
+            print(f"[+] State written → gs://{cfg.GCS_STATE_BUCKET}/{cfg.GCS_STATE_PREFIX}/{resource_name}/state.json  [{status}]")
+        else:
+            print(f"[~] State write skipped — GCS unavailable (non-blocking)")
+    except Exception as e:
+        print(f"[~] State write warning (non-blocking): {e}")
 
 async def run_provisioning_flow(user_request: str, instance_index: int = 1, total_count: int = 1):
     run_ts = datetime.now(timezone.utc).isoformat()
@@ -188,6 +241,8 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
         audit["governance_status"] = "REJECTED"
         _write_audit_summary(audit)
         _write_provision_artifact(audit)
+        # Write FAILED state so next run knows this resource was attempted
+        _write_resource_state(user_request, "FAILED", audit)
         return
 
     if "APPROVED" not in validation_text:
@@ -223,6 +278,9 @@ async def run_provisioning_flow(user_request: str, instance_index: int = 1, tota
     audit["execution_result"] = exec_text
     _write_audit_summary(audit)
     _write_provision_artifact(audit)
+    # Write state based on execution outcome
+    status = "RUNNING" if "FAILED" not in exec_text.upper() and "ERROR" not in exec_text.upper() else "FAILED"
+    _write_resource_state(user_request, status, audit)
 
 
 

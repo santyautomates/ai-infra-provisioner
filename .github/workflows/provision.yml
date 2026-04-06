@@ -84,6 +84,23 @@ jobs:
           echo "Instance ${{ matrix.index }}: sleeping ${DELAY}s before starting (MCP warmup + rate limit buffer)..."
           sleep $DELAY
 
+      - name: Create GCS State Bucket (if not exists)
+        env:
+          GCS_STATE_BUCKET: ${{ secrets.GCS_STATE_BUCKET }}
+          GCP_PROJECT_ID: ${{ github.event.inputs.project_id || secrets.GCP_PROJECT_ID }}
+        run: |
+          BUCKET="${GCS_STATE_BUCKET:-autoinfra-state}"
+          PROJECT="${GCP_PROJECT_ID}"
+          if [ -n "$BUCKET" ] && [ -n "$PROJECT" ]; then
+            # Create bucket if it doesn't exist (ignore error if already exists)
+            gsutil mb -p "$PROJECT" -l us-east1 "gs://$BUCKET" 2>/dev/null || true
+            # Enable versioning so state blob history is preserved
+            gsutil versioning set on "gs://$BUCKET" 2>/dev/null || true
+            echo "State bucket ready: gs://$BUCKET"
+          else
+            echo "Skipping bucket creation — GCS_STATE_BUCKET or GCP_PROJECT_ID not set"
+          fi
+
       - name: Run Provisioner (Instance ${{ matrix.index }})
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
