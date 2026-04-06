@@ -12,7 +12,7 @@ import config as cfg
 load_dotenv()
 
 # --- GitHub Workflow Integration ---
-def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text, count: int = 1):
+def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text, count: int = 1, project_id: str = ""):
     """Triggers the GitHub Actions provisioning workflow."""
     url = f"https://api.github.com/repos/{owner_repo}/actions/workflows/{workflow_id}/dispatches"
     
@@ -21,12 +21,17 @@ def trigger_github_workflow(github_pat, owner_repo, workflow_id, request_text, c
         "Accept": "application/vnd.github.v3+json"
     }
     
+    inputs = {
+        "request": request_text,
+        "count": str(count),
+    }
+    # Only override project_id if the user explicitly set one in the UI
+    if project_id:
+        inputs["project_id"] = project_id
+
     data = {
         "ref": "main",
-        "inputs": {
-            "request": request_text,
-            "count": str(count),       # Drives the parallel matrix (1–10)
-        }
+        "inputs": inputs,
     }
     
     try:
@@ -389,7 +394,8 @@ with st.container():
 
                 st.toast("📤 Dispatching to GitHub Actions...", icon="⚙️")
                 success, message = trigger_github_workflow(
-                    github_pat, github_repo, github_workflow, final_req, count=_count
+                    github_pat, github_repo, github_workflow, final_req,
+                    count=_count, project_id=gcp_project_id,
                 )
                 if success:
                     st.success(message)
@@ -1062,7 +1068,10 @@ if feature != "Select a Feature":
 
         st.toast("\U0001f4e4 Dispatching to GitHub Actions...", icon="\u2699\ufe0f")
         _count = int(st.session_state.get("vm_instance_count", 1))
-        success, message = trigger_github_workflow(github_pat, github_repo, github_workflow, user_request, count=_count)
+        success, message = trigger_github_workflow(
+            github_pat, github_repo, github_workflow, user_request,
+            count=_count, project_id=gcp_project_id,
+        )
         if success:
             st.success(message)
             st.balloons()

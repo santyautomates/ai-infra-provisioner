@@ -17,6 +17,10 @@ on:
         default: 'dev'
         type: choice
         options: [dev, stag, prod]
+      project_id:
+        description: 'GCP Project ID (overrides the GCP_PROJECT_ID secret when set from the UI)'
+        required: false
+        default: ''
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 1 — Setup: Build the dynamic matrix from the count input
@@ -83,12 +87,13 @@ jobs:
       - name: Run Provisioner (Instance ${{ matrix.index }})
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
-          INSTANCE_INDEX: ${{ matrix.index }}
-          INSTANCE_COUNT: ${{ github.event.inputs.count }}
+          # UI project_id wins; falls back to the GCP_PROJECT_ID secret
+          GCP_PROJECT_ID: ${{ github.event.inputs.project_id || secrets.GCP_PROJECT_ID }}
+          GOOGLE_CLOUD_PROJECT: ${{ github.event.inputs.project_id || secrets.GCP_PROJECT_ID }}
           GCS_STATE_BUCKET: ${{ secrets.GCS_STATE_BUCKET }}
           GITHUB_REPO: ${{ github.repository }}
+          INSTANCE_INDEX: ${{ matrix.index }}
+          INSTANCE_COUNT: ${{ github.event.inputs.count }}
         run: |
           mkdir -p generated_artifacts/
           python main.py \
