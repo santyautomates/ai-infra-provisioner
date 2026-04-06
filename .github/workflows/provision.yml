@@ -118,6 +118,25 @@ jobs:
             --index ${{ matrix.index }} \
             --count ${{ github.event.inputs.count }}
 
+      - name: Verify GCS State Write (Diagnostic)
+        if: always()
+        env:
+          GCS_STATE_BUCKET: ${{ secrets.GCS_STATE_BUCKET }}
+          GCP_PROJECT_ID: ${{ github.event.inputs.project_id || secrets.GCP_PROJECT_ID }}
+        run: |
+          BUCKET="${GCS_STATE_BUCKET:-autoinfra-state}"
+          echo "=== GCS State Diagnostic ==="
+          echo "Bucket : gs://$BUCKET"
+          echo "Project: $GCP_PROJECT_ID"
+          # Write a connectivity probe via gsutil (bypasses Python entirely)
+          echo '{"probe":"gcs-connectivity-ok"}' | gsutil cp - "gs://$BUCKET/_diagnostics/probe-${{ matrix.index }}.json" \
+            && echo "✅ gsutil write: SUCCESS — IAM permissions are correct" \
+            || echo "❌ gsutil write: FAILED — check SA permissions on gs://$BUCKET"
+          # List what's actually in the bucket so we can see state files
+          echo "--- Contents of gs://$BUCKET ---"
+          gsutil ls -r "gs://$BUCKET/" 2>/dev/null || echo "(bucket empty or inaccessible)"
+
+
       - name: Upload Generated Artifacts (Instance ${{ matrix.index }})
         if: always()
         uses: actions/upload-artifact@v4

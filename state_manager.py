@@ -48,8 +48,11 @@ class StateManager:
             try:
                 from google.cloud import storage  # type: ignore
                 self._client = storage.Client(project=self.project_id)
+                print(f"[state] GCS client initialised (project={self.project_id}, bucket={self.bucket})")
             except Exception as e:
-                logger.warning(f"GCS client unavailable: {e}. State features disabled.")
+                msg = f"[state] GCS client unavailable: {e}"
+                logger.warning(msg)
+                print(msg)   # always visible in GitHub Actions log
         return self._client
 
     def _blob_path(self, resource_name: str) -> str:
@@ -75,6 +78,7 @@ class StateManager:
     def _write_blob(self, blob_path: str, data: dict) -> bool:
         client = self._get_client()
         if not client:
+            print(f"[state] Skipping write — no GCS client. Path would be: gs://{self.bucket}/{blob_path}")
             return False
         try:
             bucket = client.bucket(self.bucket)
@@ -83,10 +87,13 @@ class StateManager:
                 json.dumps(data, indent=2),
                 content_type="application/json",
             )
+            print(f"[state] ✅ Written: gs://{self.bucket}/{blob_path}")
             logger.info(f"State written to gs://{self.bucket}/{blob_path}")
             return True
         except Exception as e:
-            logger.error(f"Error writing GCS blob {blob_path}: {e}")
+            msg = f"[state] ❌ Write failed gs://{self.bucket}/{blob_path}: {e}"
+            logger.error(msg)
+            print(msg)   # always visible in GitHub Actions log
             return False
 
     # ── Public API ─────────────────────────────────────────────────────────────
