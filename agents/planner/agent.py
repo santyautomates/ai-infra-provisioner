@@ -1,10 +1,11 @@
 import os
+import config as cfg
 from google.adk import Agent
 from google.adk.models import Gemini
 
 def get_planner_agent(mcp_toolset):
     model = Gemini(model_name="gemini-2.5-flash")
-    gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "[YOUR_GCP_PROJECT_ID]")
+    gcp_project = cfg.GCP_PROJECT_ID
     return Agent(
         name="Infrastructure_Planner",
         description="Translates natural language requests into cloud infrastructure plans and DevOps artifacts",

@@ -174,7 +174,7 @@ def list_gcp_resources(resource_type: str = "networks") -> str:
     import os
     logger.info(f"Listing GCP resources for type: {resource_type}")
 
-    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    project_id = cfg.GCP_PROJECT_ID
     p = f" --project={project_id}" if project_id else ""
 
     cmd_map = {
