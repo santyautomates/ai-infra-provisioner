@@ -6,3 +6,4 @@ pydantic
 python-dotenv
 streamlit
 requests
+google-cloud-storage
